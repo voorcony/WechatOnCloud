@@ -1256,7 +1256,7 @@ function VolumeManager({ inst, onClose, onChanged }: { inst: InstanceWithStatus;
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
 
         <div className="muted small" style={{ marginTop: 10, lineHeight: 1.6 }}>
