@@ -47,6 +47,7 @@ import {
   instanceOutdated,
   pullImage,
   pruneDanglingImages,
+  remoteInstanceImageNewer,
   removeInstance as removeInstanceContainer,
   instanceRuntime,
   triggerWechat,
@@ -638,21 +639,32 @@ app.post('/api/admin/instances/:id/restart', async (req, reply) => {
   }
 });
 
-// 升级实例（仅管理员）：拉取最新微信镜像后重建（保留数据卷）。用于把旧实例更新到新版镜像
-// （如修复"最小化丢失"等），类似「更新微信」但更新的是实例容器镜像本身。
+// 升级实例（仅管理员）：拉取最新微信镜像后重建（保留数据卷）。
+// 异步化：拉取在受限网络下可达数分钟（要等到停滞超时），同步等待会被反代在 ~60s 掐断——
+// 前端误报「升级失败」而后台其实还在跑，用户再点一次就撞出并发重建。改为：登记 → 立即返回，
+// 前端轮询 upgrade-status 的 upgradingIds 直到该实例移出。
+const upgradingIds = new Set<string>();
 app.post('/api/admin/instances/:id/upgrade', async (req, reply) => {
   if (!requireAdmin(req, reply)) return;
   const inst = findInstance((req.params as any).id);
   if (!inst) return reply.code(404).send({ error: '实例不存在' });
-  try {
-    appendPanelLog('INFO', `升级实例「${inst.name}」(id=${inst.id})：拉取最新镜像后重建`);
-    await upgradeInstance(inst);
-    appendPanelLog('INFO', `升级实例「${inst.name}」(id=${inst.id}) 完成`);
-    return { ok: true };
-  } catch (e: any) {
-    appendPanelLog('ERROR', `升级实例「${inst.name}」(id=${inst.id}) 失败：${e?.message || e}`);
-    return reply.code(500).send({ error: '升级失败：' + (e?.message || e) });
-  }
+  if (upgradeAllState.running) return reply.code(409).send({ error: '「一键升级全部实例」进行中，请等它完成' });
+  if (upgradingIds.has(inst.id)) return reply.code(409).send({ error: '该实例已在升级中' });
+  upgradingIds.add(inst.id);
+  void (async () => {
+    try {
+      appendPanelLog('INFO', `升级实例「${inst.name}」(id=${inst.id})：拉取最新镜像后重建`);
+      await upgradeInstance(inst);
+      appendPanelLog('INFO', `升级实例「${inst.name}」(id=${inst.id}) 完成`);
+    } catch (e: any) {
+      appendPanelLog('ERROR', `升级实例「${inst.name}」(id=${inst.id}) 失败：${e?.message || e}`);
+    } finally {
+      upgradingIds.delete(inst.id);
+      // 没有其他升级在跑时顺手回收悬空旧镜像
+      if (!upgradingIds.size && !upgradeAllState.running) void pruneDanglingImages();
+    }
+  })();
+  return { ok: true, started: true };
 });
 
 // 实例镜像升级状态：哪些实例的镜像落后于本地最新镜像（用于面板"实例可升级"红点 + 一键升级）。
@@ -670,50 +682,70 @@ app.get('/api/admin/instances/upgrade-status', async (req, reply) => {
     outdatedCount: outdated.length,
     outdatedIds: outdated.map((r) => r.id),
     instances: results,
+    // 远端 registry 是否有比本地更新的实例镜像（null=未知/离线）。补 instanceOutdated 的盲区：
+    // 用户更新面板后本地实例镜像还是旧的，仅比本地会误报"无可升级"。
+    remoteNewer: remoteInstanceImageNewer(),
     upgradeAll: upgradeAllState, // 一键升级进行中的进度（running=false 表示空闲/已完成）
+    upgradingIds: [...upgradingIds], // 单实例升级中的实例（前端轮询用）
   };
 });
 
 // 一键升级全部"镜像落后"的实例。
 // 异步化：拉镜像 + 逐个重建可能耗时数分钟到更久（受限网络下拉取要等到停滞超时），同步等待会让
 // 前端请求悬死、代理超时——用户反馈"一键升级一直卡死"。改为：立即返回，后台顺序执行，
-// 前端轮询 upgrade-status 里的 upgradeAll 进度。镜像只拉一次（不再每实例各拉一次）。
+// 前端轮询 upgrade-status 里的 upgradeAll 进度。
+// 顺序很关键：先拉镜像、再判定谁落后。反过来会把"本来等于旧最新版"的实例漏掉——拉取带来
+// 更新后它们才变落后，用户点完"全部升级"却发现横幅还在。
 let upgradeAllState = { running: false, total: 0, done: 0, failed: 0, phase: '' };
 app.post('/api/admin/instances/upgrade-all', async (req, reply) => {
   if (!requireAdmin(req, reply)) return;
   if (upgradeAllState.running) return reply.code(409).send({ error: '一键升级正在进行中，请等待完成' });
-  const latestId = await latestInstanceImageId();
-  if (!latestId) return reply.code(409).send({ error: '本地尚无实例镜像，无法判断是否需要升级（请先联网拉取）' });
-  const list = listInstances();
-  const outdated: typeof list = [];
-  for (const inst of list) if (await instanceOutdated(inst, latestId)) outdated.push(inst);
-  if (!outdated.length) return { ok: true, started: false, upgraded: 0, failed: 0 };
-
-  upgradeAllState = { running: true, total: outdated.length, done: 0, failed: 0, phase: '拉取最新镜像…' };
+  if (upgradingIds.size) return reply.code(409).send({ error: '有实例正在单独升级，请等它完成' });
+  upgradeAllState = { running: true, total: 0, done: 0, failed: 0, phase: '拉取最新实例镜像…' };
   void (async () => {
-    // 统一拉取一次（失败不阻断：用本地已有镜像重建）
     try {
-      await pullImage();
-    } catch (e: any) {
-      appendPanelLog('WARN', `一键升级：拉取镜像失败（${e?.message || e}），改用本地镜像重建`);
-    }
-    for (const inst of outdated) {
-      upgradeAllState.phase = `升级「${inst.name}」…`;
+      // ① 统一拉取一次（失败不阻断：用本地已有镜像重建）
       try {
-        appendPanelLog('INFO', `一键升级实例「${inst.name}」(id=${inst.id})…`);
-        await upgradeInstance(inst, { skipPull: true });
+        await pullImage();
       } catch (e: any) {
-        upgradeAllState.failed++;
-        appendPanelLog('ERROR', `一键升级实例「${inst.name}」(id=${inst.id}) 失败：${e?.message || e}`);
+        appendPanelLog('WARN', `一键升级：拉取镜像失败（${e?.message || e}），改用本地镜像重建`);
       }
-      upgradeAllState.done++;
+      // ② 拉取后再判定落后清单
+      const latestId = await latestInstanceImageId();
+      if (!latestId) {
+        appendPanelLog('ERROR', '一键升级：本地尚无实例镜像且拉取失败，无法继续');
+        return;
+      }
+      const outdated: ReturnType<typeof listInstances> = [];
+      for (const inst of listInstances()) if (await instanceOutdated(inst, latestId)) outdated.push(inst);
+      upgradeAllState.total = outdated.length;
+      if (!outdated.length) {
+        appendPanelLog('INFO', '一键升级：所有实例已是最新镜像');
+        return;
+      }
+      // ③ 逐个重建（跳过重复拉取）
+      for (const inst of outdated) {
+        upgradeAllState.phase = `升级「${inst.name}」…`;
+        upgradingIds.add(inst.id);
+        try {
+          appendPanelLog('INFO', `一键升级实例「${inst.name}」(id=${inst.id})…`);
+          await upgradeInstance(inst, { skipPull: true });
+        } catch (e: any) {
+          upgradeAllState.failed++;
+          appendPanelLog('ERROR', `一键升级实例「${inst.name}」(id=${inst.id}) 失败：${e?.message || e}`);
+        } finally {
+          upgradingIds.delete(inst.id);
+        }
+        upgradeAllState.done++;
+      }
+      appendPanelLog('INFO', `一键升级全部实例完成：成功 ${upgradeAllState.done - upgradeAllState.failed}、失败 ${upgradeAllState.failed}`);
+      // ④ 升级后旧镜像变悬空（<none>），顺手清理防磁盘堆积
+      await pruneDanglingImages();
+    } finally {
+      upgradeAllState = { ...upgradeAllState, running: false, phase: '' };
     }
-    appendPanelLog('INFO', `一键升级全部实例完成：成功 ${upgradeAllState.done - upgradeAllState.failed}、失败 ${upgradeAllState.failed}`);
-    // 升级后旧镜像变悬空（<none>），顺手清理防磁盘堆积
-    await pruneDanglingImages();
-    upgradeAllState = { ...upgradeAllState, running: false, phase: '' };
   })();
-  return { ok: true, started: true, total: outdated.length };
+  return { ok: true, started: true };
 });
 
 // 实例侧：设置该实例可被哪些账户访问

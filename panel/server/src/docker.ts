@@ -306,7 +306,17 @@ export async function upgradeInstance(inst: Instance, opts?: { skipPull?: boolea
       console.warn('[docker] 升级时拉取镜像失败，改用本地镜像重建:', e?.message || e);
     }
   }
+  // 升级不改变用户的运行状态：原本停止的实例，升级（重建）后停回去，而不是悄悄拉起。
+  const wasStopped = (await instanceRuntime(inst)) === 'stopped';
   await runInstance(inst);
+  if (wasStopped) {
+    try {
+      await stopInstance(inst);
+      appendInstanceLog(inst.id, '升级完成，恢复原有的停止状态');
+    } catch {
+      /* 停不回去也不算失败 */
+    }
+  }
 }
 
 // 清理悬空（dangling）镜像：升级后旧实例镜像失去 tag 变成 <none>，长期堆积吃磁盘
@@ -512,6 +522,116 @@ export async function instanceOutdated(inst: Instance, latestId: string | null):
   }
 }
 
+// ---------- 远端实例镜像新版检测 ----------
+// 盲区背景：instanceOutdated 只比「容器镜像 vs 本地镜像」。用户更新面板后，本地实例镜像
+// 往往还是旧的（没人主动 pull）→ 检测恒为"无可升级"→ 升级引导永远不出现。这里用 registry
+// manifest digest（HEAD 请求，不下载）对比本地镜像的 RepoDigests，判断远端是否有新版。
+// best-effort：离线/被墙/私有源 → null（未知，不打扰）；本地自构建镜像（无 RepoDigests）→ null。
+let remoteImageCache: { val: boolean | null; at: number } = { val: null, at: 0 };
+let remoteImageInflight: Promise<void> | null = null;
+export function invalidateRemoteImageCache(): void {
+  remoteImageCache = { val: null, at: 0 };
+}
+// 同步返回缓存值（可能 null=未知），过期时后台刷新——upgrade-status 是管理页高频接口，不能被 8s 外呼拖住。
+export function remoteInstanceImageNewer(): boolean | null {
+  const TTL = 30 * 60 * 1000;
+  if (Date.now() - remoteImageCache.at >= TTL && !remoteImageInflight) {
+    remoteImageInflight = checkRemoteImageNewer()
+      .then((v) => {
+        remoteImageCache = { val: v, at: Date.now() };
+      })
+      .catch(() => {
+        remoteImageCache = { val: null, at: Date.now() };
+      })
+      .finally(() => {
+        remoteImageInflight = null;
+      });
+  }
+  return remoteImageCache.at ? remoteImageCache.val : null;
+}
+
+async function checkRemoteImageNewer(): Promise<boolean | null> {
+  let local: any;
+  try {
+    local = await docker.getImage(WECHAT_IMAGE).inspect();
+  } catch {
+    return null; // 本地还没有镜像：首次拉取走 ensureImage 流程，不在这里打扰
+  }
+  const repoDigests: string[] = local.RepoDigests || [];
+  if (!repoDigests.length) return null; // 本地自构建（无 registry 来源）→ 无从比较，不打扰
+  const ref = parseImageRef(WECHAT_IMAGE);
+  if (!ref) return null;
+  const remote = await fetchManifestDigest(ref);
+  if (!remote) return null;
+  return !repoDigests.some((d) => d.endsWith('@' + remote));
+}
+
+// 解析镜像引用 → { registry, repo, tag }。例：docker.io/gloridust/wechat-on-cloud:latest。
+function parseImageRef(image: string): { registry: string; repo: string; tag: string } | null {
+  const noDigest = image.split('@')[0];
+  const segs = noDigest.split('/');
+  let registry = 'docker.io';
+  if (segs.length > 1 && (segs[0].includes('.') || segs[0].includes(':'))) registry = segs.shift() as string;
+  let last = segs[segs.length - 1] || '';
+  let tag = 'latest';
+  const ti = last.lastIndexOf(':');
+  if (ti > 0) {
+    tag = last.slice(ti + 1);
+    segs[segs.length - 1] = last.slice(0, ti);
+  }
+  const repo = segs.join('/');
+  return repo ? { registry, repo, tag } : null;
+}
+
+async function fetchJsonWithTimeout(url: string, headers: Record<string, string>, ms = 8000): Promise<any> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// 取 registry 上该 tag 的 manifest digest（多架构 index 的 digest，与本地 RepoDigests 同层级）。
+async function fetchManifestDigest(ref: { registry: string; repo: string; tag: string }): Promise<string | null> {
+  const accept =
+    'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json';
+  let host = ref.registry;
+  let token = '';
+  try {
+    if (ref.registry === 'docker.io') {
+      host = 'registry-1.docker.io';
+      const d = await fetchJsonWithTimeout(
+        `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${ref.repo}:pull`,
+        {},
+      );
+      token = d?.token || '';
+    } else if (ref.registry === 'ghcr.io') {
+      const d = await fetchJsonWithTimeout(`https://ghcr.io/token?service=ghcr.io&scope=repository:${ref.repo}:pull`, {});
+      token = d?.token || '';
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      // HEAD 即可拿 Docker-Content-Digest（不下载 manifest 本体）
+      const res = await fetch(`https://${host}/v2/${ref.repo}/manifests/${ref.tag}`, {
+        method: 'HEAD',
+        headers: { accept, ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        signal: ctrl.signal,
+      });
+      if (!res.ok) return null;
+      return res.headers.get('docker-content-digest');
+    } finally {
+      clearTimeout(t);
+    }
+  } catch {
+    return null;
+  }
+}
+
 // 创建 exec 实例。容器 init 未完成时，linuxserver 基镜像的 'abc' 用户可能还没建好，docker 会以
 // 400「unable to find user abc: no matching entries in passwd file」直接拒绝创建 exec（见 issue #74）。
 // 对这种"用户未就绪"错误短暂重试，给容器 init 一点时间；超时则抛清晰的中文错误，而非透传难懂的 docker 400。
@@ -600,8 +720,20 @@ export async function wechatStatus(inst: Instance): Promise<WechatStatus> {
   }
 }
 
-// 拉取微信镜像（首次部署/更新镜像用）。返回拉取日志的最后状态。
-export async function pullImage(onProgress?: (line: any) => void): Promise<void> {
+// 拉取微信镜像（首次部署/更新镜像用）。
+// 并发合并：创建实例/单实例升级/一键升级可能同时触发拉取，同一时刻只跑一个（后来者共享结果；
+// 其 onProgress 不再接收进度，可接受——进度只影响创建向导的百分比显示）。
+let pullInFlight: Promise<void> | null = null;
+export function pullImage(onProgress?: (line: any) => void): Promise<void> {
+  if (pullInFlight) return pullInFlight;
+  pullInFlight = doPullImage(onProgress).finally(() => {
+    pullInFlight = null;
+    invalidateRemoteImageCache(); // 本地镜像可能已更新 → 远端新版检测缓存作废
+  });
+  return pullInFlight;
+}
+
+async function doPullImage(onProgress?: (line: any) => void): Promise<void> {
   // 无进度超时：NAS 直连 docker.io 常卡死（拉取流僵住、永不结束），旧版会让"创建实例"请求无限 hang，
   // 前端一直转圈、还删不掉（issue #99）。这里只要 N 分钟内没有任何进度就中止拉取，让创建带清晰错误快速失败、
   // 用户可重试/删除。默认 5 分钟，WOC_PULL_STALL_MIN 可调。
