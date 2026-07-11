@@ -57,6 +57,119 @@ export interface Instance {
   // hard：内存超此值时，无论是否有人在会话都重启（防止 OOM 拖垮宿主）。
   memSoftLimitMB?: number;
   memHardLimitMB?: number;
+  // 实例级出站代理：不同微信实例走不同代理 IP，避免账号因同源 IP 被关联。
+  // url 可含账号密码（user:pass@host:port）——永不明文下发前端（见 publicInstance / proxyDisplay）。
+  // 缺省（未配置）时该实例无代理；产品规则：未启用有效代理则禁止打开 VNC 扫码登录界面。
+  proxy?: InstanceProxy;
+}
+
+// 单实例代理配置。enabled=false 或 url 为空 → 视为未配置（禁止 VNC）。
+export interface InstanceProxy {
+  enabled: boolean;
+  url: string; // http:// | https:// | socks5:// ，允许 user:pass@host:port
+  noProxy?: string; // 逗号分隔的直连清单（不走代理），已含 localhost,127.0.0.1,::1 默认项
+}
+
+// 代理直连清单默认项：容器内本地回环流量永不经代理（否则本机服务/健康探测被绕坏）。
+export const DEFAULT_NO_PROXY = 'localhost,127.0.0.1,::1';
+
+const PROXY_PROTOCOLS = new Set(['http:', 'https:', 'socks5:', 'socks5h:', 'socks4:']);
+
+// 校验并归一化代理地址。合法返回归一化后的 `protocol//[user[:pass]@]host:port`；非法抛错。
+// 支持：
+// - 标准 URL：`socks5://user:pass@host:port`、`http://host:port`、`https://user:pass@host:port`
+// - AI 浏览器常见格式：`host:port:username:password`、`host:port`、`username:password@host:port`
+// 无协议的兼容格式默认按 socks5:// 处理。
+export function validateProxyUrl(raw: string): string {
+  const s = String(raw ?? '').trim();
+  if (!s) throw new Error('代理地址为空');
+
+  const candidates = proxyUrlCandidates(s);
+  let lastError = '代理地址格式不合法（示例：socks5://user:pass@1.2.3.4:1080 或 1.2.3.4:1080:user:pass）';
+  for (const candidate of candidates) {
+    try {
+      const u = new URL(candidate);
+      if (!PROXY_PROTOCOLS.has(u.protocol)) {
+        lastError = '仅支持 http:// https:// socks5:// 代理协议';
+        continue;
+      }
+      if (!u.hostname) {
+        lastError = '代理地址缺少主机名';
+        continue;
+      }
+      if (!u.port) {
+        lastError = '代理地址缺少端口（如 :1080）';
+        continue;
+      }
+      const port = Number(u.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        lastError = '代理端口不合法（1-65535）';
+        continue;
+      }
+      // 归一化：丢弃代理 URL 不需要的 path/query/hash，仅保留 协议 + 凭据 + host:port。
+      const auth = u.username ? `${u.username}${u.password ? ':' + u.password : ''}@` : '';
+      return `${u.protocol}//${auth}${u.hostname}:${u.port}`;
+    } catch (e: any) {
+      lastError = e?.message || lastError;
+    }
+  }
+  throw new Error(lastError);
+}
+
+function proxyUrlCandidates(input: string): string[] {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) return [input];
+
+  // AI 浏览器常见格式：host:port:username:password，密码里可能含冒号，所以最多切前 3 段。
+  // IPv6 建议使用标准 URL 写法 socks5://[::1]:1080；这里的兼容格式面向 IPv4/域名。
+  const parts = input.split(':');
+  if (parts.length >= 4 && !input.includes('@')) {
+    const host = parts[0]?.trim();
+    const port = parts[1]?.trim();
+    const username = parts[2] ?? '';
+    const password = parts.slice(3).join(':');
+    if (host && port) {
+      return [`socks5://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`];
+    }
+  }
+
+  // username:password@host:port 或 host:port / host:port:user:pass 以外的裸格式，默认 socks5。
+  return [`socks5://${input}`];
+}
+
+export function isValidProxyUrl(raw: string): boolean {
+  try {
+    validateProxyUrl(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 归一化 noProxy：拆分/去空白/去重，始终并入默认回环项。
+export function sanitizeNoProxy(raw: string | undefined): string {
+  const extra = String(raw ?? '')
+    .split(/[,\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return [...new Set([...DEFAULT_NO_PROXY.split(','), ...extra])].join(',');
+}
+
+// 实例是否已启用有效代理（gate 判据：未启用/无效 URL → 禁止 VNC）。
+export function instanceProxyEnabled(i: Instance): boolean {
+  return !!(i.proxy && i.proxy.enabled && i.proxy.url && isValidProxyUrl(i.proxy.url));
+}
+
+// 代理展示信息（脱敏）：去除账号密码，仅保留 协议 + host:port；有凭据时以 ***@ 标注。
+// 前端 badge / 日志 一律用它，杜绝密码外泄。
+export function proxyDisplay(p: InstanceProxy | undefined): string {
+  if (!p || !p.url) return '';
+  try {
+    const u = new URL(p.url);
+    const cred = u.username ? '***@' : '';
+    return `${u.protocol}//${cred}${u.hostname}:${u.port}`;
+  } catch {
+    return '';
+  }
 }
 
 // 面板级全局设置（持久化进 accounts.json）。
@@ -256,7 +369,35 @@ export function publicInstance(i: Instance) {
     createdBy: i.createdBy,
     memSoftLimitMB: i.memSoftLimitMB,
     memHardLimitMB: i.memHardLimitMB,
+    // 代理安全字段：只下发"是否配置/是否启用/脱敏展示"，绝不下发含密码的原始 URL。
+    proxyConfigured: !!i.proxy?.url,
+    proxyEnabled: instanceProxyEnabled(i),
+    proxyDisplay: proxyDisplay(i.proxy),
   };
+}
+
+// 设置/清除某实例的代理。opts 三个字段均可选（未传则沿用现值）。
+// 清除条件：url 传空串 → 删除整条配置。enabled=false 仅关闭（保留 url，便于一键恢复）。
+// url 非空时强校验协议/格式，非法抛错。返回脱敏后的 publicInstance。
+export function setInstanceProxy(
+  id: string,
+  opts: { enabled?: boolean; url?: string; noProxy?: string },
+) {
+  const inst = findInstance(id);
+  if (!inst) throw new Error('实例不存在');
+  const rawUrl = opts.url === undefined ? inst.proxy?.url ?? '' : String(opts.url ?? '').trim();
+  // 显式清空 URL = 彻底删除配置（回到"未配置代理"）。
+  if (!rawUrl) {
+    delete inst.proxy;
+    persist();
+    return publicInstance(inst);
+  }
+  const url = validateProxyUrl(rawUrl); // 非法即抛
+  const enabled = opts.enabled === undefined ? inst.proxy?.enabled ?? true : !!opts.enabled;
+  const noProxy = sanitizeNoProxy(opts.noProxy === undefined ? inst.proxy?.noProxy : opts.noProxy);
+  inst.proxy = { enabled, url, noProxy };
+  persist();
+  return publicInstance(inst);
 }
 
 // 设置/清除某实例的 mem 安全阀。传 null 表示恢复默认（从对象上删字段）。

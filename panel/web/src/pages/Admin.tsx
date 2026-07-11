@@ -275,6 +275,7 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
   const [deleteInst, setDeleteInst] = useState<InstanceWithStatus | null>(null); // 删除实例弹窗
   const [renameInst, setRenameInst] = useState<InstanceWithStatus | null>(null); // 重命名实例弹窗
   const [securityInst, setSecurityInst] = useState<InstanceWithStatus | null>(null); // 安全（内存阈值）弹窗
+  const [proxyInst, setProxyInst] = useState<InstanceWithStatus | null>(null); // 代理配置弹窗
   const [volumeInst, setVolumeInst] = useState<InstanceWithStatus | null>(null); // 数据卷管理弹窗
   const [iconInst, setIconInst] = useState<InstanceWithStatus | null>(null); // 图标编辑弹窗
   const [acting, setActing] = useState<Record<string, string>>({}); // 实例 id → 进行中的动作文案（启动中/升级中…）
@@ -634,6 +635,7 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
                     onAssign={() => setAssignInst(inst)}
                     onDelete={() => setDeleteInst(inst)}
                     onSecurity={() => setSecurityInst(inst)}
+                    onProxy={() => setProxyInst(inst)}
                     onVolume={() => setVolumeInst(inst)}
                     onIcon={() => setIconInst(inst)}
                   />
@@ -885,6 +887,15 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
           onClose={() => setSecurityInst(null)}
           onDone={() => {
             toast('已保存安全阈值', 'ok');
+            load();
+          }}
+        />
+      )}
+      {proxyInst && (
+        <InstanceProxyModal
+          inst={proxyInst}
+          onClose={() => setProxyInst(null)}
+          onDone={() => {
             load();
           }}
         />
@@ -1215,6 +1226,161 @@ function InstanceSecurity({ inst, onClose, onDone }: { inst: InstanceWithStatus;
   );
 }
 
+// 「代理」弹窗：编辑某实例的出站代理。不同实例走不同代理 IP，避免账号被同源 IP 关联；
+// 未启用有效代理时后端禁止打开 VNC 扫码登录。密码永不回显（GET 只拿脱敏展示）。
+function InstanceProxyModal({ inst, onClose, onDone }: { inst: InstanceWithStatus; onClose: () => void; onDone: () => void }) {
+  const { toast, confirm } = useUI();
+  const [cfg, setCfg] = useState<import('../api').ProxyConfig | null>(null);
+  const [enabled, setEnabled] = useState(true);
+  const [url, setUrl] = useState(''); // 新代理地址；留空 = 保持当前不变（不回显密码）
+  const [noProxy, setNoProxy] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const d = await api.getInstanceProxy(inst.id);
+        if (!alive) return;
+        setCfg(d);
+        setEnabled(d.configured ? d.enabled : true);
+        setNoProxy(d.noProxy || d.defaultNoProxy);
+        setLoaded(true);
+      } catch (e: any) {
+        if (alive) {
+          setErr(e?.message || '读取失败');
+          setLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [inst.id]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr('');
+    const trimmed = url.trim();
+    // 启用但既无现存代理、也没填新地址 → 缺地址
+    if (enabled && !trimmed && !cfg?.configured) {
+      setErr('请填写代理地址（如 socks5://user:pass@1.2.3.4:1080）');
+      return;
+    }
+    setBusy(true);
+    try {
+      // 只填了新地址才带 url；否则省略 url 表示"保持当前代理不变"，仅改开关/直连清单。
+      const body: { enabled: boolean; noProxy: string; url?: string } = { enabled, noProxy };
+      if (trimmed) body.url = trimmed;
+      const r = await api.setInstanceProxy(inst.id, body);
+      toast(
+        r.restartRequired ? '已保存代理配置，重启实例后生效' : '已保存代理配置',
+        'ok',
+      );
+      onDone();
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || '保存失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearProxy = async () => {
+    if (!(await confirm({ title: '清除该实例的代理？', body: '清除后该实例将无出站代理，且禁止进入 VNC 扫码登录，直到重新配置。', danger: true, confirmText: '清除' }))) return;
+    setBusy(true);
+    setErr('');
+    try {
+      await api.setInstanceProxy(inst.id, { url: '' }); // 空 url = 删除配置
+      toast('已清除代理配置', 'ok');
+      onDone();
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || '清除失败');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-mask" onClick={onClose}>
+      <form className="card modal" onClick={(e) => e.stopPropagation()} onSubmit={save} style={{ maxWidth: 480 }}>
+        <h2>代理 · {inst.name}</h2>
+        {!loaded ? (
+          <div className="muted small" style={{ padding: '14px 0' }}>读取中…</div>
+        ) : (
+          <>
+            <div className="muted small" style={{ lineHeight: 1.6 }}>
+              为该实例的所有出站流量指定独立代理（不同实例走不同 IP，避免微信按同源 IP 关联账号）。
+              <br />
+              支持 <b>http:// https:// socks5://</b>，可带账号密码：<code>socks5://user:pass@1.2.3.4:1080</code>。
+              <br />
+              <b>未启用有效代理时，禁止打开该实例的桌面/扫码登录</b>；保存后需<b>重启实例</b>才生效。
+            </div>
+
+            {cfg?.configured && (
+              <div className="security-status">
+                <div className="security-row">
+                  <span>当前代理</span>
+                  <b>{cfg.display || '—'}</b>
+                </div>
+                <div className="security-row">
+                  <span>状态</span>
+                  <span className="muted">{cfg.enabled ? '已启用' : '已配置但关闭'}{cfg.running ? ' · 运行中（改动需重启生效）' : ''}</span>
+                </div>
+              </div>
+            )}
+
+            <label className="row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              <span>启用代理（关闭则该实例无代理，且禁止进入桌面）</span>
+            </label>
+
+            <div className="field-label" style={{ marginTop: 12 }}>
+              代理地址{cfg?.configured ? '（留空 = 保持当前代理不变）' : ''}
+            </div>
+            <input
+              className="input"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={cfg?.configured ? '不修改则留空；密码不会回显' : 'socks5://user:pass@1.2.3.4:1080'}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <div className="muted small" style={{ marginTop: 4 }}>出于安全，已配置的代理密码不会回显；更换代理请重新完整填写地址。</div>
+
+            <div className="field-label" style={{ marginTop: 12 }}>直连清单 no_proxy（逗号分隔，本机回环已默认直连）</div>
+            <input
+              className="input"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={cfg?.defaultNoProxy || 'localhost,127.0.0.1,::1'}
+              value={noProxy}
+              onChange={(e) => setNoProxy(e.target.value)}
+            />
+
+            {err && <div className="error">{err}</div>}
+          </>
+        )}
+        <div className="modal-actions">
+          {cfg?.configured && (
+            <button type="button" className="btn-text" style={{ color: 'var(--danger)' }} onClick={clearProxy} disabled={busy}>
+              清除代理
+            </button>
+          )}
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
+            取消
+          </button>
+          <button className="btn btn-primary" disabled={busy || !loaded}>
+            保存
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function DeleteInstance({ inst, onClose, onDone }: { inst: InstanceWithStatus; onClose: () => void; onDone: () => void }) {
   const [purge, setPurge] = useState(false);
   const [err, setErr] = useState('');
@@ -1274,6 +1440,7 @@ function InstanceAdminCard({
   onAssign,
   onDelete,
   onSecurity,
+  onProxy,
   onVolume,
   onIcon,
 }: {
@@ -1291,9 +1458,11 @@ function InstanceAdminCard({
   onAssign: () => void;
   onDelete: () => void;
   onSecurity: () => void;
+  onProxy: () => void;
   onVolume: () => void;
   onIcon: () => void;
 }) {
+  const { toast } = useUI();
   const wx = inst.wechat;
   const busy = BUSY_PHASES.includes(wx.phase);
   const installed = wx.installed && wx.phase !== 'downloading';
@@ -1312,6 +1481,31 @@ function InstanceAdminCard({
   }, [menuOpen]);
 
   const profile = appProfile(inst.appType);
+  // 代理状态：产品要求未启用有效代理时禁止进入 VNC（避免裸 IP 扫码登录被关联）。
+  const proxyEnabled = !!inst.proxyEnabled;
+  const proxyConfigured = !!inst.proxyConfigured;
+  const proxyHost = inst.proxyDisplay ? inst.proxyDisplay.replace(/^[a-z0-9]+:\/\/(?:.*@)?/i, '') : '';
+
+  // 进入实例：未配置有效代理时不跳转，toast 提示先配代理。
+  const handleEnter = () => {
+    if (!proxyEnabled) {
+      toast('请先配置实例代理，避免裸 IP 扫码登录', 'error');
+      return;
+    }
+    onEnter();
+  };
+  // 启动/重启不阻断，但未配代理时给出清晰提示（VNC 仍会被后端门禁拦下）。
+  const proxyReminder = () => {
+    if (!proxyEnabled) toast('该实例未配置代理，启动后仍无法进入桌面，请先在「管理 → 代理」配置', 'info');
+  };
+  const handleStart = () => {
+    proxyReminder();
+    onStart();
+  };
+  const handleRestart = () => {
+    proxyReminder();
+    onRestart();
+  };
 
   let badge: { text: string; cls: string };
   if (acting) badge = { text: '处理中', cls: 'tag-busy' };
@@ -1337,23 +1531,35 @@ function InstanceAdminCard({
         <span className={'tag ' + badge.cls}>{badge.text}</span>
       </div>
       {/* 次要元数据独占一行（可换行），不再和名字挤在标题行导致名字被截断、徽标竖排换行 */}
-      {((outdated && !acting) || inst.imageVersion) && (
-        <div className="inst-meta">
-          {outdated && !acting && (
-            <span className="tag tag-warn" title="该实例的镜像落后于最新版，点「升级实例」可更新">
-              可升级
-            </span>
-          )}
-          {inst.imageVersion && (
-            <span
-              className="tag tag-muted"
-              title={/^\d+\.\d+\.\d+$/.test(inst.imageVersion) ? '该实例当前运行的镜像版本' : '本地自构建镜像（无发布版本号，显示镜像短 id）'}
-            >
-              镜像 {/^\d+\.\d+\.\d+$/.test(inst.imageVersion) ? `v${inst.imageVersion}` : inst.imageVersion.slice(0, 8)}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="inst-meta">
+        {/* 代理状态 badge：始终显示，让管理员一眼看出该实例能否进入 VNC。 */}
+        {proxyEnabled ? (
+          <span className="tag tag-on" title={`出站代理已启用：${inst.proxyDisplay || ''}（可进入桌面）`}>
+            代理 {proxyHost || '已配置'}
+          </span>
+        ) : proxyConfigured ? (
+          <span className="tag tag-warn" title="代理已配置但已关闭，进入桌面被禁止。点「管理 → 代理」启用">
+            代理已关闭
+          </span>
+        ) : (
+          <span className="tag tag-off" title="未配置出站代理，已禁止进入 VNC 扫码登录（避免裸 IP 关联账号）">
+            未配置代理
+          </span>
+        )}
+        {outdated && !acting && (
+          <span className="tag tag-warn" title="该实例的镜像落后于最新版，点「升级实例」可更新">
+            可升级
+          </span>
+        )}
+        {inst.imageVersion && (
+          <span
+            className="tag tag-muted"
+            title={/^\d+\.\d+\.\d+$/.test(inst.imageVersion) ? '该实例当前运行的镜像版本' : '本地自构建镜像（无发布版本号，显示镜像短 id）'}
+          >
+            镜像 {/^\d+\.\d+\.\d+$/.test(inst.imageVersion) ? `v${inst.imageVersion}` : inst.imageVersion.slice(0, 8)}
+          </span>
+        )}
+      </div>
       <div className="inst-sub">
         {sub}
         {!acting && ` · 可访问 ${userCount} 人`}
@@ -1373,11 +1579,16 @@ function InstanceAdminCard({
         <>
           <div className="inst-actions">
             {offline ? (
-              <button className="btn btn-primary inst-act-wide" onClick={onStart}>
+              <button className="btn btn-primary inst-act-wide" onClick={handleStart}>
                 {inst.runtime === 'missing' ? '创建并启动' : '启动实例'}
               </button>
             ) : (
-              <button className="btn btn-primary inst-act-wide" disabled={!installed} onClick={onEnter} title={installed ? '' : '需先下载安装' + profile.label}>
+              <button
+                className="btn btn-primary inst-act-wide"
+                disabled={!installed}
+                onClick={handleEnter}
+                title={!installed ? '需先下载安装' + profile.label : !proxyEnabled ? '未配置代理，进入被禁止：请先在「管理 → 代理」配置' : ''}
+              >
                 进入实例
               </button>
             )}
@@ -1403,7 +1614,7 @@ function InstanceAdminCard({
                     升级实例
                   </button>
                   {!offline && (
-                    <button className="btn-text" onClick={onRestart}>
+                    <button className="btn-text" onClick={handleRestart}>
                       重启
                     </button>
                   )}
@@ -1428,6 +1639,9 @@ function InstanceAdminCard({
                   </button>
                   <button className="btn-text" onClick={onSecurity} title="内存阈值自愈">
                     安全
+                  </button>
+                  <button className="btn-text" onClick={onProxy} title="出站代理：不同实例走不同 IP，避免账号关联；未配置则禁止进入 VNC">
+                    代理
                   </button>
                   <button className="btn-text" onClick={onIcon} title="设置实例图标：内置图标 / 上传图片裁剪">
                     图标

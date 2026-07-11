@@ -29,6 +29,10 @@ import {
   renameInstance,
   setInstanceIcon,
   setInstanceUsers,
+  setInstanceProxy,
+  instanceProxyEnabled,
+  proxyDisplay,
+  DEFAULT_NO_PROXY,
   publicInstance,
   getDesktopDark,
   setDesktopDark,
@@ -393,8 +397,9 @@ app.get('/api/instances', async (req, reply) => {
   if (!u) return;
   const visible = userInstances(u);
   const out = await Promise.all(
-    visible.map(async (pub) => {
-      const inst = findInstance(pub.id)!;
+    visible.map(async (visibleInst) => {
+      const inst = findInstance(visibleInst.id)!;
+      const pub = publicInstance(inst); // 只下发安全字段；避免把原始 proxy.url（可能含密码）暴露给前端。
       const [runtime, wx, imageVersion] = await Promise.all([
         instanceRuntime(inst),
         wechatStatus(inst),
@@ -623,6 +628,61 @@ app.put('/api/admin/instances/:id/mem-limits', async (req, reply) => {
     return { instance: pub };
   } catch (e: any) {
     return reply.code(400).send({ error: e?.message || '阈值不合法' });
+  }
+});
+
+// 查/改单实例的出站代理（仅管理员）。前端"实例卡片 → 管理 → 代理"弹窗用。
+// GET 只回脱敏视图（是否配置/是否启用/脱敏展示/直连清单）——绝不下发含密码的原始 URL。
+// PUT 接受 {enabled, url, noProxy}：url 为空或 enabled=false 表示清除/关闭；保存不自动重启，
+// 但会记录"重启后生效"（实例运行中时）。启动/重启实例时才把代理注入容器环境变量（见 docker.envList）。
+app.get('/api/admin/instances/:id/proxy', async (req, reply) => {
+  if (!requireAdmin(req, reply)) return;
+  const id = (req.params as any).id;
+  const inst = findInstance(id);
+  if (!inst) return reply.code(404).send({ error: '实例不存在' });
+  let running = false;
+  try {
+    running = (await instanceRuntime(inst)) === 'running';
+  } catch {
+    /* ignore：未运行时按 false */
+  }
+  return {
+    enabled: !!inst.proxy?.enabled,
+    configured: !!inst.proxy?.url,
+    display: proxyDisplay(inst.proxy), // 脱敏，含 ***@ 标注凭据；无则空串
+    noProxy: inst.proxy?.noProxy || '',
+    defaultNoProxy: DEFAULT_NO_PROXY,
+    running,
+  };
+});
+app.put('/api/admin/instances/:id/proxy', async (req, reply) => {
+  if (!requireAdmin(req, reply)) return;
+  const id = (req.params as any).id;
+  const inst = findInstance(id);
+  if (!inst) return reply.code(404).send({ error: '实例不存在' });
+  const body = (req.body as any) ?? {};
+  try {
+    const pub = setInstanceProxy(id, {
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+      url: body.url === undefined ? undefined : String(body.url ?? ''),
+      noProxy: body.noProxy === undefined ? undefined : String(body.noProxy ?? ''),
+    });
+    let running = false;
+    try {
+      running = (await instanceRuntime(inst)) === 'running';
+    } catch {
+      /* ignore */
+    }
+    const enabledNow = instanceProxyEnabled(inst);
+    const disp = inst.proxy?.url ? proxyDisplay(inst.proxy) : '（已清除）';
+    // 脱敏日志：只记 proxyDisplay，绝不落密码。运行中则明确提示"重启后生效"。
+    const state = enabledNow ? '启用' : inst.proxy?.url ? '已配置但关闭' : '关闭';
+    const hint = running ? ' · 重启实例后生效' : '';
+    appendPanelLog('INFO', `实例「${inst.name}」(id=${id}) 代理${state}：${disp}${hint}`);
+    appendInstanceLog(id, `代理配置更新：${state} ${disp}（重启实例后生效）`);
+    return { instance: pub, running, restartRequired: running, proxyEnabled: enabledNow };
+  } catch (e: any) {
+    return reply.code(400).send({ error: e?.message || '代理配置不合法' });
   }
 });
 
@@ -1444,6 +1504,15 @@ const desktopHandler = (req: FastifyRequest, reply: FastifyReply) => {
     return;
   }
   const inst = findInstance(parsed.id)!;
+  // 代理硬门禁：未启用有效代理的实例，一律禁止打开桌面/VNC——即便前端被绕过，也不让裸 IP 扫码登录。
+  // 放在反代（hijack）之前，故 noVNC 页面、websockify、静态子资源全被 403 拦下。不影响 /api、/login、面板本身。
+  if (!instanceProxyEnabled(inst)) {
+    reply
+      .code(403)
+      .header('cache-control', 'no-store')
+      .send({ error: '该实例未配置出站代理，已禁止打开桌面。请管理员先在「管理 → 代理」配置实例代理，避免裸 IP 扫码登录关联账号。' });
+    return;
+  }
   reply.hijack();
   req.raw.url = parsed.rest;
   (req.raw as any)._wocAuth = basicAuth(inst);
@@ -1497,6 +1566,11 @@ app.server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) =>
     return;
   }
   const inst = findInstance(parsed.id)!;
+  // 代理硬门禁（WS 侧）：与 desktopHandler 对齐——未启用有效代理则直接断开 VNC websocket。
+  if (!instanceProxyEnabled(inst)) {
+    socket.destroy();
+    return;
+  }
   req.url = parsed.rest;
   (req as any)._wocAuth = basicAuth(inst);
   (req as any)._wocInstId = inst.id;
