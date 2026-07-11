@@ -53,6 +53,19 @@ export interface PanelInstance {
   createdBy: string;
   memSoftLimitMB?: number;
   memHardLimitMB?: number;
+  // 代理安全字段（后端脱敏下发，永不含密码）：
+  proxyConfigured?: boolean; // 是否存有代理 URL
+  proxyEnabled?: boolean; // 是否启用了有效代理（未启用则禁止进入 VNC）
+  proxyDisplay?: string; // 脱敏展示，如 socks5://***@1.2.3.4:1080
+}
+// 代理配置弹窗 GET 返回（脱敏）：绝不含原始密码。
+export interface ProxyConfig {
+  enabled: boolean;
+  configured: boolean;
+  display: string; // 脱敏展示；无则空串
+  noProxy: string;
+  defaultNoProxy: string;
+  running: boolean; // 实例是否运行中（用于提示"重启后生效"）
 }
 export interface MemLimits {
   soft: number | null;
@@ -174,6 +187,13 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ soft, hard }),
     }),
+  // 实例出站代理（管理员）：GET 只拿脱敏视图；PUT 保存（url 空或 enabled=false = 清除/关闭），重启后生效。
+  getInstanceProxy: (id: string) => req<ProxyConfig>(`/api/admin/instances/${id}/proxy`),
+  setInstanceProxy: (id: string, body: { enabled?: boolean; url?: string; noProxy?: string }) =>
+    req<{ instance: PanelInstance; running: boolean; restartRequired: boolean; proxyEnabled: boolean }>(
+      `/api/admin/instances/${id}/proxy`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
   listOrphanVolumes: () =>
     req<{ volumes: { name: string; createdAt?: string; sizeBytes?: number }[] }>('/api/admin/orphan-volumes'),
   deleteOrphanVolume: (name: string) =>

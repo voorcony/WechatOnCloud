@@ -4,7 +4,7 @@ import { appendInstanceLog, deleteInstanceLog, appendPanelLog, readInstanceLog, 
 import http from 'node:http';
 import zlib from 'node:zlib';
 import Docker from 'dockerode';
-import { instanceAppType, getDesktopDark, type Instance } from './store.js';
+import { instanceAppType, getDesktopDark, instanceProxyEnabled, sanitizeNoProxy, type Instance } from './store.js';
 
 // 实例镜像引用。版本耦合（架构守则 R1）：面板与实例镜像同一 release 同步出包、按同版本号
 // 互相验证——正式版面板把 :latest 改写为与自身相同的版本 tag（如 1.4.1），保证
@@ -220,6 +220,16 @@ function envList(inst: Instance): string[] {
   // 微信等 Chromium 系应用即跟随系统深色）。开关由面板顶栏主题统一控制、持久化在 accounts.json，
   // 运行中的实例则通过 setInstanceDark 实时切换（见下）。
   if (getDesktopDark()) env.push('WOC_DARK=1');
+  // 实例级出站代理：为该实例的所有出站流量注入代理环境变量（大小写两套，兼容不同工具/库）。
+  // 注意：绝不在此打印 url（含账号密码）——脱敏日志由上层路由用 proxyDisplay 记录。
+  if (instanceProxyEnabled(inst) && inst.proxy) {
+    const url = inst.proxy.url;
+    const noProxy = sanitizeNoProxy(inst.proxy.noProxy); // 始终含 localhost,127.0.0.1,::1
+    for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) {
+      env.push(`${k}=${url}`);
+    }
+    env.push(`NO_PROXY=${noProxy}`, `no_proxy=${noProxy}`);
+  }
   return env;
 }
 

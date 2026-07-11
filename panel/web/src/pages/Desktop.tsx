@@ -237,7 +237,17 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
   const [probing, setProbing] = useState(true);
   const offline = inst ? inst.runtime !== 'running' : false;
   const installed = !!inst && inst.wechat.installed && inst.wechat.phase !== 'downloading';
-  const showVnc = !!inst && !offline && installed;
+  // 代理门禁：实例未启用有效出站代理时，不渲染 VNC（避免裸 IP 扫码登录被关联）。与后端 /desktop 403 门禁一致。
+  const proxyEnabled = !!inst?.proxyEnabled;
+  const showVnc = !!inst && !offline && installed && proxyEnabled;
+
+  // 进入实例页时先主动拉一次最新实例列表；代理配置/重启通常从管理页跳转而来，避免复用旧 context
+  // 导致 proxyEnabled 仍是 undefined/false，误显示「未配置代理」。
+  useEffect(() => {
+    if (!id) return;
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // 切换实例时重置内嵌态
   useEffect(() => {
@@ -987,6 +997,22 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
             {isAdmin && (
               <button className="btn-text" onClick={() => window.open(api.instanceLogsUrl(id), '_blank')}>
                 查看日志
+              </button>
+            )}
+          </div>
+        </div>
+      ) : !proxyEnabled ? (
+        <div className="iv-stage iv-center">
+          <div className="iv-notice">
+            <div className="iv-notice-title">该实例未配置代理</div>
+            <div className="iv-notice-sub">
+              {isAdmin
+                ? '为避免裸 IP 扫码登录导致账号被关联，未配置出站代理的实例禁止进入桌面。请先在「管理 → 代理」为该实例配置代理并重启实例。'
+                : '实例未配置代理，请联系管理员配置后再进入。'}
+            </div>
+            {isAdmin && (
+              <button className="btn btn-primary iv-notice-btn" onClick={() => nav('/admin')}>
+                去「管理」配置代理
               </button>
             )}
           </div>
