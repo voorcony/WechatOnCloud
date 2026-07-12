@@ -86,6 +86,96 @@ export interface VersionInfo {
   error: string | null; // 检查失败原因
 }
 
+// ---------- AI 员工中心（PR3：接 ai-wechat-employee 的 management_api 只读代理） ----------
+// 后端 /api/ai-employees/console 返回：已启用则 mode="real" 带 console 快照（已按当前账号可见
+// 实例过滤、字段 allowlist）；未配置/子进程失败则 mode="demo_fallback"，前端回退到本地演示。
+export type AiTaskCounts = Record<string, number>;
+export type AiRunCounts = Record<string, number>;
+export interface AiEmployeeCard {
+  employee_id: number;
+  role: string;
+  status: string;
+  instance_count: number;
+  task_counts: AiTaskCounts;
+  run_counts: AiRunCounts;
+  latest_task_id: number | null;
+  latest_run_id: number | null;
+}
+export interface AiInstanceCard {
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  woc_instance_id: string | null; // 命中的当前账号可见 WOC 实例 id（后端回填），可用于显示真实名/跳转
+  bound_employee_ids: number[];
+  active_binding_count: number;
+  task_counts: AiTaskCounts;
+  run_counts: AiRunCounts;
+  latest_run_id: number | null;
+}
+export interface AiTaskCard {
+  task_id: number;
+  status: string;
+  task_type: string;
+  employee_id: number;
+  instance_id_hash: string | null;
+  instance_id_suffix: string | null;
+  woc_instance_id: string | null;
+  input_redacted: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AiRunCard {
+  run_id: number;
+  run_type: string;
+  status: string;
+  employee_id: number;
+  task_id: number | null;
+  instance_id_hash: string | null;
+  instance_id_suffix: string | null;
+  woc_instance_id: string | null;
+  redacted_summary: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+export interface AiBindChannel {
+  channel_id: number;
+  channel_type: string;
+  bind_status: string;
+  bound_at: string | null;
+  has_bind_token: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AiConsolePayload {
+  found: boolean;
+  dashboard: Record<string, number | string | number[]> | null;
+  employee_cards: AiEmployeeCard[];
+  instance_cards: AiInstanceCard[];
+  recent_tasks: AiTaskCard[];
+  recent_runs: AiRunCard[];
+  pending: Record<string, number> | null;
+  bind_panel: {
+    found: boolean;
+    channel_count: number;
+    counts: Record<string, number>;
+    channels: AiBindChannel[];
+  } | null;
+}
+export type AiEmployeeConsoleResponse =
+  | {
+      enabled: false;
+      mode: 'demo_fallback';
+      reason: 'not_configured' | 'unavailable' | 'cannot_enforce_instance_filter';
+      visibleInstanceIds: string[];
+      console: null;
+    }
+  | {
+      enabled: true;
+      mode: 'real';
+      source: 'ai-wechat-employee';
+      visibleInstanceCount: number;
+      console: AiConsolePayload;
+    };
+
 // 原始二进制上传（File 直传 application/octet-stream），用于数据卷上传/解压/恢复
 async function rawUpload(url: string, file: File): Promise<any> {
   const res = await fetch(url, {
@@ -126,6 +216,9 @@ export const api = {
   logout: () => req('/api/auth/logout', { method: 'POST' }),
   changePassword: (oldPassword: string, newPassword: string) =>
     req('/api/account/password', { method: 'POST', body: JSON.stringify({ oldPassword, newPassword }) }),
+
+  // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
+  aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
 
   // 版本与更新检测
   getVersion: () => req<VersionInfo>('/api/version'),

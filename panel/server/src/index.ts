@@ -95,6 +95,7 @@ import {
   getFontFamily,
 } from './docker.js';
 import { createSession, getSession, destroySession, destroyUserSessions, SESSION_TTL_MS } from './sessions.js';
+import { buildConsoleResponse } from './ai-employee.js';
 import { parseHost, parseAllowedHosts, isRequestHostAllowed } from './host-guard.js';
 import { CURRENT_VERSION, versionInfo, ensureChecked, checkForUpdate, startUpdateChecker } from './version.js';
 import { triggerSelfUpdate } from './self-update.js';
@@ -403,6 +404,15 @@ app.get('/api/instances', async (req, reply) => {
     }),
   );
   return { instances: out };
+});
+
+// AI 员工中心 · 只读代理：把 ai-wechat-employee 的 management_api console 快照按当前账号可见实例
+// 过滤后回给前端。未配置 / 子进程失败一律回退 demo_fallback（永不 500）。见 ./ai-employee.ts。
+app.get('/api/ai-employees/console', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  const visibleIds = userInstances(u).map((i) => i.id);
+  return buildConsoleResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] console ${code}`));
 });
 
 // 用户自助「卡死自愈」：当客户端检测到 VNC 多次干净重连仍连不上（多半是实例 KasmVNC 的 ws 接收器卡死——
