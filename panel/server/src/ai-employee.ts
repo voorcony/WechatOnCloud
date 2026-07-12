@@ -68,11 +68,11 @@ export function computeTextHash(text: string): string {
 
 // ---------- 子进程调用 CLI ----------
 // 只读、无 shell、带超时；成功返回解析后的 payload，失败一律抛 coded Error（上层转 fallback）。
-function runConsoleCli(cfg: AiEmployeeConfig): Promise<any> {
+function runCli(cfg: AiEmployeeConfig, subcommand: 'console' | 'create-bind'): Promise<any> {
   return new Promise((resolve, reject) => {
     execFile(
       cfg.python,
-      [cfg.cli, 'console', '--db', cfg.db, '--tenant', cfg.tenant, '--secretary-id', String(cfg.secretaryId)],
+      [cfg.cli, subcommand, '--db', cfg.db, '--tenant', cfg.tenant, '--secretary-id', String(cfg.secretaryId)],
       { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
       (err, stdout) => {
         if (err) {
@@ -140,6 +140,43 @@ export interface RunCard {
   started_at: string | null;
   finished_at: string | null;
 }
+export interface CustomerCard {
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  conversation_key_hash: string;
+  display_name_hash: string;
+  message_count: number;
+  incoming_count: number;
+  outgoing_count: number;
+  latest_observed_at: string | null;
+  active_memory_count: number;
+  candidate_memory_count: number;
+  profile_present: boolean;
+  profile_stage: string | null;
+  profile_risk_level: string | null;
+  profile_intent_score: number | null;
+}
+export interface KnowledgeDocument {
+  document_id: number;
+  title: string;
+  source_path_hash: string;
+  content_hash: string;
+  chunk_count: number;
+  updated_at: string | null;
+}
+export interface KnowledgeSummary {
+  document_count: number;
+  chunk_count: number;
+  documents: KnowledgeDocument[];
+}
+export interface BindPayloadResponse {
+  ok: true;
+  channel_id: number;
+  channel_type: string;
+  bind_payload_hash: string;
+  bind_token_hash: string;
+  bind_payload_text: string;
+}
 export interface BindChannel {
   channel_id: number;
   channel_type: string;
@@ -157,6 +194,8 @@ export interface ConsolePayload {
   recent_tasks: TaskCard[];
   recent_runs: RunCard[];
   pending: Record<string, number> | null;
+  customer_cards: CustomerCard[];
+  knowledge_summary: KnowledgeSummary | null;
   bind_panel: {
     found: boolean;
     channel_count: number;
@@ -261,6 +300,40 @@ function pickRun(v: any, wocId: (h: unknown) => string | null): RunCard {
     finished_at: str(v?.finished_at),
   };
 }
+function pickCustomer(v: any): CustomerCard {
+  return {
+    instance_id_hash: str(v?.instance_id_hash) ?? '',
+    instance_id_suffix: str(v?.instance_id_suffix) ?? '',
+    conversation_key_hash: str(v?.conversation_key_hash) ?? '',
+    display_name_hash: str(v?.display_name_hash) ?? '',
+    message_count: num(v?.message_count) ?? 0,
+    incoming_count: num(v?.incoming_count) ?? 0,
+    outgoing_count: num(v?.outgoing_count) ?? 0,
+    latest_observed_at: str(v?.latest_observed_at),
+    active_memory_count: num(v?.active_memory_count) ?? 0,
+    candidate_memory_count: num(v?.candidate_memory_count) ?? 0,
+    profile_present: !!v?.profile_present,
+    profile_stage: str(v?.profile_stage),
+    profile_risk_level: str(v?.profile_risk_level),
+    profile_intent_score: num(v?.profile_intent_score),
+  };
+}
+function pickKnowledge(v: any): KnowledgeSummary | null {
+  if (!v || typeof v !== 'object') return null;
+  const docs = Array.isArray(v.documents) ? v.documents : [];
+  return {
+    document_count: num(v.document_count) ?? 0,
+    chunk_count: num(v.chunk_count) ?? 0,
+    documents: docs.map((d: any) => ({
+      document_id: num(d?.document_id) ?? 0,
+      title: str(d?.title) ?? '',
+      source_path_hash: str(d?.source_path_hash) ?? '',
+      content_hash: str(d?.content_hash) ?? '',
+      chunk_count: num(d?.chunk_count) ?? 0,
+      updated_at: str(d?.updated_at),
+    })),
+  };
+}
 function pickChannel(v: any): BindChannel {
   return {
     channel_id: num(v?.channel_id) ?? 0,
@@ -281,6 +354,7 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
   const rawTasks: any[] = Array.isArray(raw?.recent_tasks) ? raw.recent_tasks : [];
   const rawRuns: any[] = Array.isArray(raw?.recent_runs) ? raw.recent_runs : [];
   const rawEmployees: any[] = Array.isArray(raw?.employee_cards) ? raw.employee_cards : [];
+  const rawCustomers: any[] = Array.isArray(raw?.customer_cards) ? raw.customer_cards : [];
 
   const visible = (h: unknown): boolean => hashToId === null || (typeof h === 'string' && hashToId.has(h));
   const wocId = (h: unknown): string | null =>
@@ -304,6 +378,8 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
     .map((r) => pickRun(r, wocId))
     .filter((r) => r.instance_id_hash === null || visible(r.instance_id_hash));
 
+  const customerCards = rawCustomers.filter((c) => visible(c?.instance_id_hash)).map(pickCustomer);
+
   const bp = raw?.bind_panel;
   const bindPanel = bp && typeof bp === 'object'
     ? {
@@ -322,6 +398,8 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
     recent_tasks: recentTasks,
     recent_runs: recentRuns,
     pending: raw?.pending && typeof raw.pending === 'object' ? pickCounts(raw.pending) : null,
+    customer_cards: customerCards,
+    knowledge_summary: pickKnowledge(raw?.knowledge_summary),
     bind_panel: bindPanel,
   };
 }
@@ -348,7 +426,7 @@ export async function buildConsoleResponse(
 
   let raw: any;
   try {
-    raw = await runConsoleCli(cfg);
+    raw = await runCli(cfg, 'console');
   } catch (e) {
     log?.((e as Error).message || 'cli_error');
     return fallback('unavailable');
@@ -376,4 +454,27 @@ export async function buildConsoleResponse(
     visibleInstanceCount: visibleInstanceIds.length,
     console: consolePayload,
   };
+}
+
+export async function createAiEmployeeBindPayload(log?: (code: string) => void): Promise<BindPayloadResponse | null> {
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) return null;
+  try {
+    const raw = await runCli(cfg, 'create-bind');
+    if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'create_bind') return null;
+    const text = str(raw.bind_payload_text);
+    const channelId = num(raw.channel_id);
+    if (!text || channelId === null) return null;
+    return {
+      ok: true,
+      channel_id: channelId,
+      channel_type: str(raw.channel_type) ?? 'wechat_bot',
+      bind_payload_hash: str(raw.bind_payload_hash) ?? '',
+      bind_token_hash: str(raw.bind_token_hash) ?? '',
+      bind_payload_text: text,
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'cli_error');
+    return null;
+  }
 }

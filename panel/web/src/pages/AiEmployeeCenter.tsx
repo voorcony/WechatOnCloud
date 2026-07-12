@@ -12,6 +12,9 @@ import {
   type AiInstanceCard,
   type AiTaskCard,
   type AiRunCard,
+  type AiCustomerCard,
+  type AiKnowledgeDocument,
+  type AiBindPayloadResponse,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -112,11 +115,13 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(sec / 86400)} 天前`;
 }
 
-type Seg = 'overview' | 'employees' | 'instances' | 'tasks' | 'timeline' | 'pending' | 'bind';
+type Seg = 'overview' | 'employees' | 'instances' | 'customers' | 'knowledge' | 'tasks' | 'timeline' | 'pending' | 'bind';
 const SEGMENTS: { key: Seg; label: string }[] = [
   { key: 'overview', label: '总控台' },
   { key: 'employees', label: 'AI 员工' },
   { key: 'instances', label: '微信实例' },
+  { key: 'customers', label: '客户画像' },
+  { key: 'knowledge', label: '知识库' },
   { key: 'tasks', label: '任务' },
   { key: 'timeline', label: '时间线' },
   { key: 'pending', label: '待确认' },
@@ -168,7 +173,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
     ? [
         { label: '可见实例', value: instances.length, tone: '' },
         { label: 'AI 员工', value: real.employee_cards.length, tone: '' },
-        { label: '任务', value: numOf(real.dashboard?.tasks_total) ?? real.recent_tasks.length, tone: '' },
+        { label: '客户画像', value: real.customer_cards.length, tone: '' },
+        { label: '知识库', value: real.knowledge_summary?.document_count ?? 0, tone: '' },
         { label: '待确认', value: real.pending?.pending_total ?? 0, tone: (real.pending?.pending_total ?? 0) ? 'warn' : '' },
         { label: '异常', value: abnormal, tone: abnormal ? 'danger' : '' },
       ]
@@ -235,6 +241,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             {seg === 'overview' && <RealOverview c={real} wocById={wocById} isAdmin={isAdmin} onOpen={(id) => nav(`/i/${id}`)} />}
             {seg === 'employees' && <RealEmployees c={real} />}
             {seg === 'instances' && <RealInstances c={real} wocById={wocById} onOpen={(id) => nav(`/i/${id}`)} />}
+            {seg === 'customers' && <RealCustomers c={real} wocById={wocById} />}
+            {seg === 'knowledge' && <RealKnowledge c={real} />}
             {seg === 'tasks' && <RealTasks c={real} wocById={wocById} />}
             {seg === 'timeline' && <RealTimeline c={real} wocById={wocById} />}
             {seg === 'pending' && <RealPending c={real} wocById={wocById} />}
@@ -245,6 +253,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             {seg === 'overview' && <Overview binds={binds} isAdmin={isAdmin} />}
             {seg === 'employees' && <Employees binds={binds} />}
             {seg === 'instances' && <InstancesTab binds={binds} onOpen={(id) => nav(`/i/${id}`)} />}
+            {seg === 'customers' && <CustomersDemo binds={binds} />}
+            {seg === 'knowledge' && <KnowledgeDemo binds={binds} />}
             {seg === 'tasks' && <Tasks binds={binds} />}
             {seg === 'timeline' && <Timeline binds={binds} />}
             {seg === 'pending' && <Pending binds={binds} />}
@@ -454,6 +464,70 @@ function RealInstances({
   );
 }
 
+
+function stageLabel(stage: string | null): string {
+  const map: Record<string, string> = { high_intent: '高意向', browsing: '了解中', after_sales: '售后', risk: '风险' };
+  return stage ? map[stage] ?? stage : '未形成';
+}
+function riskClass(risk: string | null): string {
+  if (risk === 'high') return 'st-off';
+  if (risk === 'medium') return 'st-warn';
+  return 'st-on';
+}
+function RealCustomers({ c, wocById }: { c: AiConsolePayload; wocById: Map<string, InstanceWithStatus> }) {
+  if (c.customer_cards.length === 0) return <div className="ai-note">暂无客户画像。请先启动 OCR 历史补全并运行记忆/画像抽取。</div>;
+  return (
+    <>
+      <div className="ai-note">客户画像来自 OCR 入库消息 + contact_profiles/contact_memories。此页只展示 hash、阶段、记忆计数和状态，不显示聊天正文。</div>
+      <div className="ai-grid">
+        {c.customer_cards.map((x: AiCustomerCard) => (
+          <div key={x.conversation_key_hash} className="ai-card">
+            <div className="ai-card-head">
+              <span className="ai-card-hashav">{x.display_name_hash.slice(0, 4)}</span>
+              <div className="ai-card-id">
+                <div className="ai-card-name">客户画像 · {x.conversation_key_hash.slice(0, 8)}</div>
+                <div className="ai-card-sub">@{instanceLabelBy(x.instance_id_suffix, null, wocById)} · {timeAgo(x.latest_observed_at)}</div>
+              </div>
+              <span className={'ai-dot ' + riskClass(x.profile_risk_level)} />
+            </div>
+            <div className="ai-card-stats">
+              阶段 {stageLabel(x.profile_stage)}
+              <span className="ai-card-sep">·</span> 消息 {x.message_count}
+              <span className="ai-card-sep">·</span> 记忆 {x.active_memory_count}/{x.candidate_memory_count}
+            </div>
+            <div className="ai-note">意向分：{x.profile_intent_score ?? '—'} · 入/出 {x.incoming_count}/{x.outgoing_count}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+function RealKnowledge({ c }: { c: AiConsolePayload }) {
+  const k = c.knowledge_summary;
+  if (!k || k.document_count === 0) return <div className="ai-note">暂无知识库。后续可从本页接上传/导入；当前只读展示已入库文档和 chunk 计数。</div>;
+  return (
+    <>
+      <div className="ai-kpis">
+        <div className="ai-kpi"><span className="ai-kpi-val">{k.document_count}</span><span className="ai-kpi-lbl">知识文档</span></div>
+        <div className="ai-kpi"><span className="ai-kpi-val">{k.chunk_count}</span><span className="ai-kpi-lbl">检索切片</span></div>
+      </div>
+      <table className="ai-table">
+        <thead><tr><th>文档</th><th>切片</th><th>内容 hash</th><th>更新</th></tr></thead>
+        <tbody>
+          {k.documents.map((d: AiKnowledgeDocument) => (
+            <tr key={d.document_id}>
+              <td><b>{d.title || '未命名文档'}</b><div className="ai-cell-sub">path hash · {d.source_path_hash}</div></td>
+              <td>{d.chunk_count}</td>
+              <td className="ai-mono">{d.content_hash}</td>
+              <td className="ai-cell-sub">{timeAgo(d.updated_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function RealTasks({ c, wocById }: { c: AiConsolePayload; wocById: Map<string, InstanceWithStatus> }) {
   return (
     <table className="ai-table">
@@ -564,47 +638,56 @@ function RealPending({ c, wocById }: { c: AiConsolePayload; wocById: Map<string,
 
 function RealBind({ c }: { c: AiConsolePayload }) {
   const bp = c.bind_panel;
+  const [payload, setPayload] = useState<AiBindPayloadResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const createBind = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const r = await api.createAiEmployeeBind();
+      setPayload(r);
+    } catch (e: any) {
+      setErr(e?.message || '生成失败');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="ai-bind">
-      <div className="ai-bind-title">大秘书控制通道</div>
+      <div className="ai-bind-title">扫码绑定秘书</div>
       <p className="ai-bind-desc">
-        下列为大秘书总控与已授权云微信实例之间的绑定通道概览（真实数据，只读）。
-        <b> 不显示绑定 token / external id；生成新绑定仍走后续专用流程。</b>
+        生成一次性绑定 payload，给控制机器人/二维码使用。后端只保存 token hash；原始 payload 只在本次页面展示。
       </p>
       {bp && bp.channel_count > 0 ? (
         <table className="ai-table" style={{ marginTop: 10 }}>
           <thead>
-            <tr>
-              <th>通道</th>
-              <th>类型</th>
-              <th>状态</th>
-              <th>已绑定 token</th>
-              <th>绑定时间</th>
-            </tr>
+            <tr><th>通道</th><th>类型</th><th>状态</th><th>已绑定 token</th><th>绑定时间</th></tr>
           </thead>
           <tbody>
             {bp.channels.map((ch) => (
               <tr key={ch.channel_id}>
-                <td className="ai-mono">#{ch.channel_id}</td>
-                <td>{ch.channel_type}</td>
-                <td>
-                  <span className={'ai-dot ' + (ch.bind_status === 'active' ? 'st-on' : ch.bind_status === 'pending' ? 'st-warn' : 'st-off')} /> {ch.bind_status}
-                </td>
-                <td>{ch.has_bind_token ? '是' : '否'}</td>
-                <td className="ai-cell-sub">{ch.bound_at ? timeAgo(ch.bound_at) : '—'}</td>
+                <td className="ai-mono">#{ch.channel_id}</td><td>{ch.channel_type}</td>
+                <td><span className={'ai-dot ' + (ch.bind_status === 'active' ? 'st-on' : ch.bind_status === 'pending' ? 'st-warn' : 'st-off')} /> {ch.bind_status}</td>
+                <td>{ch.has_bind_token ? '是' : '否'}</td><td className="ai-cell-sub">{ch.bound_at ? timeAgo(ch.bound_at) : '—'}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      ) : (
-        <div className="ai-note" style={{ marginTop: 10 }}>暂无控制通道。</div>
-      )}
+      ) : <div className="ai-note" style={{ marginTop: 10 }}>暂无控制通道。</div>}
       <div className="ai-bind-actions" style={{ marginTop: 12 }}>
-        <button className="btn btn-primary" disabled title="生成新绑定走后续专用流程，本页只读">
-          生成绑定码
-        </button>
-        <span className="ai-bind-hint">生成新绑定走后续专用流程，本页只读</span>
+        <button className="btn btn-primary" disabled={busy} onClick={createBind}>{busy ? '生成中…' : '生成绑定码'}</button>
+        <span className="ai-bind-hint">管理员生成；子账号无权生成</span>
       </div>
+      {err && <div className="ai-warn" style={{ marginTop: 10 }}>{err}</div>}
+      {payload && (
+        <div className="ai-bind-payload">
+          <div className="ai-bind-title">一次性绑定 payload</div>
+          <div className="ai-qrbox">QR</div>
+          <div className="ai-bind-code">{payload.bind_payload_text}</div>
+          <div className="ai-note">channel #{payload.channel_id} · payload hash {payload.bind_payload_hash} · token hash {payload.bind_token_hash}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -738,6 +821,30 @@ function InstancesTab({ binds, onOpen }: { binds: DemoBind[]; onOpen: (id: strin
           );
         })}
       </div>
+    </>
+  );
+}
+
+
+function CustomersDemo({ binds }: { binds: DemoBind[] }) {
+  return (
+    <div className="ai-grid">
+      {binds.slice(0, 6).map((b, i) => (
+        <div key={b.inst.id + 'c'} className="ai-card">
+          <div className="ai-card-name">客户画像 · 演示 #{i + 1}</div>
+          <div className="ai-card-sub">{b.empName} @{b.inst.name}</div>
+          <div className="ai-card-stats">阶段 高意向<span className="ai-card-sep">·</span>消息 {8 + seedOf(b.inst.id) % 30}<span className="ai-card-sep">·</span>记忆 {1 + seedOf(b.empId) % 4}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function KnowledgeDemo({ binds }: { binds: DemoBind[] }) {
+  const n = Math.max(1, Math.min(4, binds.length || 1));
+  return (
+    <>
+      <div className="ai-note">演示知识库入口。真实模式会展示 ai-wechat-employee 已入库文档与 chunk 计数。</div>
+      <div className="ai-kpis"><div className="ai-kpi ai-kpi-demo"><span className="ai-kpi-val">{n}</span><span className="ai-kpi-lbl">知识文档</span></div><div className="ai-kpi ai-kpi-demo"><span className="ai-kpi-val">{n * 6}</span><span className="ai-kpi-lbl">检索切片</span></div></div>
     </>
   );
 }
