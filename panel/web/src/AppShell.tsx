@@ -7,6 +7,7 @@ import { InstanceIcon } from './AppIcon';
 import { getThemeMode, applyThemeMode, nextThemeMode, resolveDark, type ThemeMode } from './theme';
 import InstanceView from './pages/Desktop';
 import Admin from './pages/Admin';
+import AiEmployeeCenter, { AiEmployeeIcon } from './pages/AiEmployeeCenter';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -138,6 +139,7 @@ export default function AppShell() {
         <main className="workspace">
           <Routes>
             <Route path="/" element={<HomeView onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
+            <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
             <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -185,6 +187,14 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
         <button className={'sb-item' + (loc.pathname === '/' ? ' on' : '')} onClick={() => go('/')} title="主页">
           <span className="sb-ic">{Icon.home}</span>
           {!collapsed && <span className="sb-label">主页</span>}
+        </button>
+        <button
+          className={'sb-item' + (loc.pathname === '/ai-employees' ? ' on' : '')}
+          onClick={() => go('/ai-employees')}
+          title="AI 员工"
+        >
+          <span className="sb-ic">{AiEmployeeIcon}</span>
+          {!collapsed && <span className="sb-label">AI 员工</span>}
         </button>
       </nav>
 
