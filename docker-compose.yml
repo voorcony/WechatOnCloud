@@ -4,7 +4,12 @@
 services:
   panel:
     # 镜像源前缀默认 Docker Hub（飞牛等 NAS 有加速）；拉不动时改 .env 的 WOC_IMAGE_PREFIX 切到 GHCR/国内反代（见 .env.example）。
-    image: ${WOC_IMAGE_PREFIX:-docker.io/gloridust}/woc-panel:${WOC_VERSION:-latest}
+    image: ${WOC_PANEL_IMAGE:-voorcony/woc-panel:local}
+    build:
+      context: ./panel
+      dockerfile: Dockerfile
+      args:
+        WOC_VERSION: ${WOC_VERSION:-local}
     container_name: woc-panel
     # pull_policy 用默认（missing）：本地已有同名镜像就直接用，没有才去镜像源拉。
     # 这样「发布前本地自构建」与「线上拉取」都能用同一份 compose。

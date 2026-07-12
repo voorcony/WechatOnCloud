@@ -465,7 +465,7 @@ export async function buildConsoleResponse(
 
   const hashToId = new Map<string, string>();
   for (const id of visibleInstanceIds) hashToId.set(computeTextHash(id), id);
-  const consolePayload = filterConsole(raw, canFilter ? hashToId : null);
+  const consolePayload = filterConsole(raw, user.role === 'admin' || !canFilter ? null : hashToId);
 
   return {
     enabled: true,

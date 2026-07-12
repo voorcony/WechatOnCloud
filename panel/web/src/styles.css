@@ -3120,3 +3120,40 @@ button {
   margin-top: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+.ai-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 14px 0 16px;
+}
+.ai-action-card {
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  padding: 14px;
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+.ai-action-card.primary {
+  border-color: rgba(var(--green-rgb), .42);
+  background: linear-gradient(135deg, rgba(var(--green-rgb), .20), rgba(var(--green-rgb), .06));
+}
+.ai-action-card b,
+.ai-action-card span {
+  display: block;
+}
+.ai-action-ic {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.ai-action-card b {
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.ai-action-card span:not(.ai-action-ic) {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
