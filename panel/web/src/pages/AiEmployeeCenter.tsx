@@ -140,16 +140,16 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   // 拉取真实 console 快照（只读）。失败一律视为 fallback，绝不阻塞页面。
   const [resp, setResp] = useState<AiEmployeeConsoleResponse | null>(null);
   const [probed, setProbed] = useState(false);
-  useEffect(() => {
-    let alive = true;
+  const loadConsole = () => {
+    setProbed(false);
     api
       .aiEmployeeConsole()
-      .then((r) => alive && setResp(r))
-      .catch(() => alive && setResp(null))
-      .finally(() => alive && setProbed(true));
-    return () => {
-      alive = false;
-    };
+      .then((r) => setResp(r))
+      .catch(() => setResp(null))
+      .finally(() => setProbed(true));
+  };
+  useEffect(() => {
+    loadConsole();
   }, []);
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
@@ -217,6 +217,24 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             </div>
           ))}
 
+        <div className="ai-action-grid">
+          <button className="ai-action-card primary" onClick={() => setSeg('bind')}>
+            <span className="ai-action-ic">📲</span>
+            <b>扫码绑定秘书</b>
+            <span>生成一次性绑定码，把大秘书接入云微信实例</span>
+          </button>
+          <button className="ai-action-card" onClick={() => setSeg('knowledge')}>
+            <span className="ai-action-ic">📚</span>
+            <b>导入知识库</b>
+            <span>商品、售后、优惠话术变成 AI 员工可检索知识</span>
+          </button>
+          <button className="ai-action-card" onClick={() => setSeg('customers')}>
+            <span className="ai-action-ic">👥</span>
+            <b>查看客户画像</b>
+            <span>按会话沉淀阶段、风险、意向和记忆计数</span>
+          </button>
+        </div>
+
         <div className="ai-kpis">
           {kpis.map((k) => (
             <div key={k.label} className={'ai-kpi' + (k.tone ? ' ai-kpi-' + k.tone : '')}>
@@ -244,7 +262,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             {seg === 'employees' && <RealEmployees c={real} />}
             {seg === 'instances' && <RealInstances c={real} wocById={wocById} onOpen={(id) => nav(`/i/${id}`)} />}
             {seg === 'customers' && <RealCustomers c={real} wocById={wocById} />}
-            {seg === 'knowledge' && <RealKnowledge c={real} />}
+            {seg === 'knowledge' && <RealKnowledge c={real} onImported={loadConsole} />}
             {seg === 'tasks' && <RealTasks c={real} wocById={wocById} />}
             {seg === 'timeline' && <RealTimeline c={real} wocById={wocById} />}
             {seg === 'pending' && <RealPending c={real} wocById={wocById} />}
