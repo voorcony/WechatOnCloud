@@ -95,7 +95,7 @@ import {
   getFontFamily,
 } from './docker.js';
 import { createSession, getSession, destroySession, destroyUserSessions, SESSION_TTL_MS } from './sessions.js';
-import { buildConsoleResponse } from './ai-employee.js';
+import { buildConsoleResponse, createAiEmployeeBindPayload } from './ai-employee.js';
 import { parseHost, parseAllowedHosts, isRequestHostAllowed } from './host-guard.js';
 import { CURRENT_VERSION, versionInfo, ensureChecked, checkForUpdate, startUpdateChecker } from './version.js';
 import { triggerSelfUpdate } from './self-update.js';
@@ -413,6 +413,15 @@ app.get('/api/ai-employees/console', async (req, reply) => {
   if (!u) return;
   const visibleIds = userInstances(u).map((i) => i.id);
   return buildConsoleResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] console ${code}`));
+});
+
+app.post('/api/ai-employees/bind', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  if (u.role !== 'admin') return reply.code(403).send({ error: '仅管理员可生成绑定码' });
+  const payload = await createAiEmployeeBindPayload((code) => appendPanelLog('WARN', `[ai-employee] bind ${code}`));
+  if (!payload) return reply.code(503).send({ error: 'AI 员工绑定服务未配置或不可用' });
+  return payload;
 });
 
 // 用户自助「卡死自愈」：当客户端检测到 VNC 多次干净重连仍连不上（多半是实例 KasmVNC 的 ws 接收器卡死——

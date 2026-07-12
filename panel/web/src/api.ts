@@ -136,6 +136,43 @@ export interface AiRunCard {
   started_at: string | null;
   finished_at: string | null;
 }
+export interface AiCustomerCard {
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  conversation_key_hash: string;
+  display_name_hash: string;
+  message_count: number;
+  incoming_count: number;
+  outgoing_count: number;
+  latest_observed_at: string | null;
+  active_memory_count: number;
+  candidate_memory_count: number;
+  profile_present: boolean;
+  profile_stage: string | null;
+  profile_risk_level: string | null;
+  profile_intent_score: number | null;
+}
+export interface AiKnowledgeDocument {
+  document_id: number;
+  title: string;
+  source_path_hash: string;
+  content_hash: string;
+  chunk_count: number;
+  updated_at: string | null;
+}
+export interface AiKnowledgeSummary {
+  document_count: number;
+  chunk_count: number;
+  documents: AiKnowledgeDocument[];
+}
+export interface AiBindPayloadResponse {
+  ok: true;
+  channel_id: number;
+  channel_type: string;
+  bind_payload_hash: string;
+  bind_token_hash: string;
+  bind_payload_text: string;
+}
 export interface AiBindChannel {
   channel_id: number;
   channel_type: string;
@@ -153,6 +190,8 @@ export interface AiConsolePayload {
   recent_tasks: AiTaskCard[];
   recent_runs: AiRunCard[];
   pending: Record<string, number> | null;
+  customer_cards: AiCustomerCard[];
+  knowledge_summary: AiKnowledgeSummary | null;
   bind_panel: {
     found: boolean;
     channel_count: number;
@@ -219,6 +258,7 @@ export const api = {
 
   // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
+  createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
 
   // 版本与更新检测
   getVersion: () => req<VersionInfo>('/api/version'),

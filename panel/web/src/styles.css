@@ -3081,6 +3081,30 @@ button {
   font-size: 14px;
 }
 .ai-bind-hint {
-  font-size: 12px;
   color: var(--muted);
+  font-size: 12.5px;
+}
+.ai-bind-payload {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: var(--r-small);
+  background: rgba(var(--green-rgb) / 0.08);
+}
+.ai-qrbox {
+  width: 92px;
+  height: 92px;
+  border-radius: 18px;
+  background: repeating-linear-gradient(45deg, var(--text) 0 4px, transparent 4px 8px), var(--surface);
+  color: transparent;
+  box-shadow: var(--crease);
+  margin: 10px 0;
+}
+.ai-bind-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-all;
+  background: var(--trough);
+  border-radius: 12px;
+  padding: 10px;
 }
