@@ -1,17 +1,33 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useInstances, statusOf } from '../AppShell';
-import { appProfile, type InstanceWithStatus } from '../api';
+import {
+  api,
+  appProfile,
+  type InstanceWithStatus,
+  type AiEmployeeConsoleResponse,
+  type AiConsolePayload,
+  type AiEmployeeCard,
+  type AiInstanceCard,
+  type AiTaskCard,
+  type AiRunCard,
+} from '../api';
 import { InstanceIcon } from '../AppIcon';
 
-// AI 员工中心（UI MVP）
+// AI 员工中心
 // 定位：云微信实例之上的 AI 私域员工总控台。
 //   大秘书 → AI 员工 → 云微信实例 → 任务 → 时间线 → 待确认
-// 严格约束（见 doc/AI员工中心.md）：
-//   - 复用云微已有登录态 / admin·sub 角色 / 子账号体系 / 实例访问授权。
-//   - 不调用新的后端 API、不生成真实 token、不触发任何发送/审批/绑定真实动作。
-//   - 员工/任务/时间线/待确认均为演示占位；实例 id/name/appType/status 来自用户本就可见的实例。
+//
+// PR2：UI 壳（演示占位）。PR3：接入 ai-wechat-employee 的 management_api 只读代理
+//   （GET /api/ai-employees/console）。后端已按当前账号可见实例过滤并做字段 allowlist，
+//   payload 只含 id/hash/suffix/计数/redacted 摘要，绝无聊天正文 / reply_text / token。
+//
+// 展示策略：
+//   - 后端返回 mode="real" 且 console.found → 用真实 management 数据渲染各 tab。
+//   - 否则（未配置数据源 / 子进程不可用 / 子账号无法过滤）→ 回退到 PR2 本地演示，并明确提示。
+// 严格约束（见 doc/AI员工中心.md）：复用云微登录态 / admin·sub 角色 / 实例授权；
+//   不触发任何真实发送/审批/绑定动作；不显示任何 raw unknown 对象。
 
 const MenuIcon = (
   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -50,6 +66,52 @@ function seedOf(s: string): number {
   return (h >>> 0) % 1000;
 }
 
+// ---------- 真实数据的中文标签映射（未知值回退原字符串，绝不显示 raw 未知对象） ----------
+const ROLE_LABELS: Record<string, string> = {
+  pre_sales: '售前',
+  after_sales: '售后',
+  retention: '复购',
+  group_ops: '群运营',
+};
+const TASK_TYPE_LABELS: Record<string, string> = {
+  high_intent_summary: '高意向汇总',
+  reply_customer: '回复客户',
+  daily_report: '日报',
+};
+const RUN_TYPE_LABELS: Record<string, string> = {
+  message_ingest: '消息接入',
+  reply_suggest: '起草回复',
+  approval_wait: '等待人审',
+};
+const TASK_STATUS: Record<string, { t: string; cls: string }> = {
+  queued: { t: '排队', cls: 'st-busy' },
+  routing: { t: '路由中', cls: 'st-busy' },
+  running: { t: '进行中', cls: 'st-busy' },
+  waiting_approval: { t: '待确认', cls: 'st-warn' },
+  completed: { t: '已完成', cls: 'st-on' },
+  failed: { t: '失败', cls: 'st-off' },
+  cancelled: { t: '已取消', cls: '' },
+};
+const RUN_STATUS: Record<string, { t: string; cls: string }> = {
+  running: { t: '进行中', cls: 'st-busy' },
+  completed: { t: '已完成', cls: 'st-on' },
+  failed: { t: '失败', cls: 'st-off' },
+  skipped: { t: '跳过', cls: '' },
+};
+const label = (m: Record<string, string>, k: string): string => m[k] ?? k;
+const empRoleLabel = (role: string): string => label(ROLE_LABELS, role);
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (sec < 60) return `${sec} 秒前`;
+  if (sec < 3600) return `${Math.floor(sec / 60)} 分钟前`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} 小时前`;
+  return `${Math.floor(sec / 86400)} 天前`;
+}
+
 type Seg = 'overview' | 'employees' | 'instances' | 'tasks' | 'timeline' | 'pending' | 'bind';
 const SEGMENTS: { key: Seg; label: string }[] = [
   { key: 'overview', label: '总控台' },
@@ -68,6 +130,23 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const [seg, setSeg] = useState<Seg>('overview');
   const isAdmin = user?.role === 'admin';
 
+  // 拉取真实 console 快照（只读）。失败一律视为 fallback，绝不阻塞页面。
+  const [resp, setResp] = useState<AiEmployeeConsoleResponse | null>(null);
+  const [probed, setProbed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api
+      .aiEmployeeConsole()
+      .then((r) => alive && setResp(r))
+      .catch(() => alive && setResp(null))
+      .finally(() => alive && setProbed(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
+
   // 可见实例 → demo 绑定卡（岗位轮询分配）。范围严格等于当前账号可见实例。
   const binds = useMemo<DemoBind[]>(
     () =>
@@ -80,19 +159,20 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
     [instances],
   );
 
-  // KPI：可见实例数为真值，其余为演示派生
-  const abnormal = instances.filter((i) => i.runtime !== 'running' || !i.wechat.installed).length;
-  const employeeCount = instances.length === 0 ? 0 : Math.max(4, instances.length);
-  const todayMsgs = instances.reduce((sum, i) => sum + 40 + (seedOf(i.id) % 160), 0);
-  const pendingCount = instances.length === 0 ? 0 : (seedOf(instances.map((i) => i.id).join()) % 5) + 1;
+  // woc 实例 id → 实例对象，供真实模式把 instance card 还原成真实名/图标/跳转
+  const wocById = useMemo(() => new Map(instances.map((i) => [i.id, i])), [instances]);
 
-  const kpis = [
-    { label: '可见实例', value: instances.length, tone: '' },
-    { label: 'AI 员工', value: employeeCount, tone: '' },
-    { label: '今日消息', value: todayMsgs, tone: 'demo' },
-    { label: '待确认', value: pendingCount, tone: pendingCount ? 'warn' : '' },
-    { label: '异常', value: abnormal, tone: abnormal ? 'danger' : '' },
-  ];
+  // KPI：可见实例数恒为真值；其余在真实模式取 management 数据，否则用演示派生
+  const abnormal = instances.filter((i) => i.runtime !== 'running' || !i.wechat.installed).length;
+  const kpis = real
+    ? [
+        { label: '可见实例', value: instances.length, tone: '' },
+        { label: 'AI 员工', value: real.employee_cards.length, tone: '' },
+        { label: '任务', value: numOf(real.dashboard?.tasks_total) ?? real.recent_tasks.length, tone: '' },
+        { label: '待确认', value: real.pending?.pending_total ?? 0, tone: (real.pending?.pending_total ?? 0) ? 'warn' : '' },
+        { label: '异常', value: abnormal, tone: abnormal ? 'danger' : '' },
+      ]
+    : demoKpis(instances, abnormal);
 
   const empty = loaded && instances.length === 0;
 
@@ -117,6 +197,18 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
           </div>
         </section>
 
+        {/* 数据源状态：真实 vs 本地演示 */}
+        {probed &&
+          (real ? (
+            <div className="ai-srcbar ai-srcbar-real">
+              <span className="ai-srcdot" /> 已接入真实 AI 员工数据 · 来源 ai-wechat-employee（只读，已按你可见实例过滤）
+            </div>
+          ) : (
+            <div className="ai-warn">
+              当前未配置 AI 员工数据源{resp && resp.mode === 'demo_fallback' && resp.reason === 'cannot_enforce_instance_filter' ? '（无法按实例过滤，已对子账号回退）' : ''}，正在展示本地演示数据。
+            </div>
+          ))}
+
         <div className="ai-kpis">
           {kpis.map((k) => (
             <div key={k.label} className={'ai-kpi' + (k.tone ? ' ai-kpi-' + k.tone : '')}>
@@ -136,8 +228,18 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
 
         {empty ? (
           <EmptyBinds isAdmin={isAdmin} onManage={() => nav('/admin')} />
-        ) : !loaded ? (
+        ) : !loaded || !probed ? (
           <div className="ai-loading">加载可见实例…</div>
+        ) : real ? (
+          <div className="ai-panel">
+            {seg === 'overview' && <RealOverview c={real} wocById={wocById} isAdmin={isAdmin} onOpen={(id) => nav(`/i/${id}`)} />}
+            {seg === 'employees' && <RealEmployees c={real} />}
+            {seg === 'instances' && <RealInstances c={real} wocById={wocById} onOpen={(id) => nav(`/i/${id}`)} />}
+            {seg === 'tasks' && <RealTasks c={real} wocById={wocById} />}
+            {seg === 'timeline' && <RealTimeline c={real} wocById={wocById} />}
+            {seg === 'pending' && <RealPending c={real} wocById={wocById} />}
+            {seg === 'bind' && <RealBind c={real} />}
+          </div>
         ) : (
           <div className="ai-panel">
             {seg === 'overview' && <Overview binds={binds} isAdmin={isAdmin} />}
@@ -153,6 +255,367 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
     </div>
   );
 }
+
+function numOf(v: number | string | number[] | undefined): number | null {
+  return typeof v === 'number' ? v : null;
+}
+
+function demoKpis(instances: InstanceWithStatus[], abnormal: number) {
+  const employeeCount = instances.length === 0 ? 0 : Math.max(4, instances.length);
+  const todayMsgs = instances.reduce((sum, i) => sum + 40 + (seedOf(i.id) % 160), 0);
+  const pendingCount = instances.length === 0 ? 0 : (seedOf(instances.map((i) => i.id).join()) % 5) + 1;
+  return [
+    { label: '可见实例', value: instances.length, tone: '' },
+    { label: 'AI 员工', value: employeeCount, tone: '' },
+    { label: '今日消息', value: todayMsgs, tone: 'demo' },
+    { label: '待确认', value: pendingCount, tone: pendingCount ? 'warn' : '' },
+    { label: '异常', value: abnormal, tone: abnormal ? 'danger' : '' },
+  ];
+}
+
+// 真实模式：实例卡内联展示 hash/suffix 或真实名（命中可见实例时）
+function instanceLabel(card: { woc_instance_id: string | null; instance_id_suffix: string }, wocById: Map<string, InstanceWithStatus>): string {
+  const inst = card.woc_instance_id ? wocById.get(card.woc_instance_id) : undefined;
+  return inst ? inst.name : `实例 ···${card.instance_id_suffix}`;
+}
+function instanceLabelBy(hashSuffix: string | null, wocId: string | null, wocById: Map<string, InstanceWithStatus>): string {
+  const inst = wocId ? wocById.get(wocId) : undefined;
+  if (inst) return inst.name;
+  return hashSuffix ? `实例 ···${hashSuffix}` : '（无实例）';
+}
+
+function sumCounts(counts: Record<string, number>): number {
+  return Object.values(counts).reduce((a, b) => a + (b || 0), 0);
+}
+
+// ==================== 真实模式组件 ====================
+
+function RealOverview({
+  c,
+  wocById,
+  isAdmin,
+  onOpen,
+}: {
+  c: AiConsolePayload;
+  wocById: Map<string, InstanceWithStatus>;
+  isAdmin: boolean;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <>
+      <div className="ai-note">
+        以下为真实 AI 员工运行数据（只读）。{isAdmin ? '作为管理员，你看到全部实例。' : '范围为你被授权的实例。'}
+        仅展示计数与脱敏摘要，不含任何聊天正文。
+      </div>
+      {c.instance_cards.length === 0 ? (
+        <div className="ai-note">当前可见实例上暂无已绑定的 AI 员工数据。</div>
+      ) : (
+        <div className="ai-grid">
+          {c.instance_cards.map((ic) => {
+            const inst = ic.woc_instance_id ? wocById.get(ic.woc_instance_id) : undefined;
+            const running = sumCounts(ic.run_counts);
+            const tasks = sumCounts(ic.task_counts);
+            const card = (
+              <div className="ai-card-head">
+                <span className="ai-card-av">
+                  {inst ? <InstanceIcon icon={inst.icon} appType={inst.appType} size={38} radius={11} /> : <span className="ai-card-hashav">···{ic.instance_id_suffix}</span>}
+                </span>
+                <div className="ai-card-id">
+                  <div className="ai-card-name">{instanceLabel(ic, wocById)}</div>
+                  <div className="ai-card-sub">绑定员工 {ic.bound_employee_ids.length} · 活跃绑定 {ic.active_binding_count}</div>
+                </div>
+                {inst && <span className="enter-arrow">›</span>}
+              </div>
+            );
+            const stats = (
+              <div className="ai-card-stats">
+                任务 {tasks}
+                <span className="ai-card-sep">·</span> 运行 {running}
+                {ic.task_counts.waiting_approval ? (
+                  <>
+                    <span className="ai-card-sep">·</span>
+                    <span className="ai-dot st-warn" /> 待确认 {ic.task_counts.waiting_approval}
+                  </>
+                ) : null}
+              </div>
+            );
+            return inst ? (
+              <button key={ic.instance_id_hash} className="ai-card ai-card-btn" onClick={() => onOpen(inst.id)}>
+                {card}
+                {stats}
+              </button>
+            ) : (
+              <div key={ic.instance_id_hash} className="ai-card">
+                {card}
+                {stats}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function RealEmployees({ c }: { c: AiConsolePayload }) {
+  return (
+    <table className="ai-table">
+      <thead>
+        <tr>
+          <th>员工</th>
+          <th>岗位</th>
+          <th>状态</th>
+          <th>绑定实例</th>
+          <th>任务</th>
+          <th>运行</th>
+        </tr>
+      </thead>
+      <tbody>
+        {c.employee_cards.map((e: AiEmployeeCard) => {
+          const roleCn = empRoleLabel(e.role);
+          return (
+            <tr key={e.employee_id}>
+              <td>
+                <b>{roleCn}助理</b>
+                <div className="ai-cell-sub">EMP-{String(e.employee_id).padStart(2, '0')}</div>
+              </td>
+              <td>
+                <span className={'ai-role ai-role-' + roleCn}>{roleCn}</span>
+              </td>
+              <td>
+                <span className={'ai-dot ' + (e.status === 'active' ? 'st-on' : e.status === 'paused' ? 'st-warn' : '')} /> {e.status}
+              </td>
+              <td>{e.instance_count}</td>
+              <td>{sumCounts(e.task_counts)}</td>
+              <td>{sumCounts(e.run_counts)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function RealInstances({
+  c,
+  wocById,
+  onOpen,
+}: {
+  c: AiConsolePayload;
+  wocById: Map<string, InstanceWithStatus>;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <>
+      <div className="ai-note">这些是绑定了 AI 员工、且在你可见范围内的云微信实例。命中真实实例时可点击跳转。</div>
+      <div className="ai-grid">
+        {c.instance_cards.map((ic: AiInstanceCard) => {
+          const inst = ic.woc_instance_id ? wocById.get(ic.woc_instance_id) : undefined;
+          const st = inst ? statusOf(inst) : null;
+          const prof = inst ? appProfile(inst.appType) : null;
+          const head = (
+            <div className="ai-card-head">
+              <span className="ai-card-av">
+                {inst ? <InstanceIcon icon={inst.icon} appType={inst.appType} size={38} radius={11} /> : <span className="ai-card-hashav">···{ic.instance_id_suffix}</span>}
+              </span>
+              <div className="ai-card-id">
+                <div className="ai-card-name">{instanceLabel(ic, wocById)}</div>
+                <div className="ai-card-sub">{prof ? prof.label : 'hash ···' + ic.instance_id_suffix} · 绑定 {ic.bound_employee_ids.length} 员工</div>
+              </div>
+              {inst && <span className="enter-arrow">›</span>}
+            </div>
+          );
+          const stats = (
+            <div className="ai-card-stats">
+              {st ? (
+                <>
+                  <span className={'ai-dot ' + st.cls} /> {st.text}
+                  <span className="ai-card-sep">·</span>
+                </>
+              ) : null}
+              任务 {sumCounts(ic.task_counts)}
+              <span className="ai-card-sep">·</span> 运行 {sumCounts(ic.run_counts)}
+            </div>
+          );
+          return inst ? (
+            <button key={ic.instance_id_hash} className="ai-card ai-card-btn" onClick={() => onOpen(inst.id)}>
+              {head}
+              {stats}
+            </button>
+          ) : (
+            <div key={ic.instance_id_hash} className="ai-card">
+              {head}
+              {stats}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function RealTasks({ c, wocById }: { c: AiConsolePayload; wocById: Map<string, InstanceWithStatus> }) {
+  return (
+    <table className="ai-table">
+      <thead>
+        <tr>
+          <th>任务</th>
+          <th>员工</th>
+          <th>实例</th>
+          <th>状态</th>
+          <th>更新</th>
+        </tr>
+      </thead>
+      <tbody>
+        {c.recent_tasks.map((t: AiTaskCard) => {
+          const stt = TASK_STATUS[t.status] ?? { t: t.status, cls: '' };
+          return (
+            <tr key={t.task_id}>
+              <td>
+                <b>{label(TASK_TYPE_LABELS, t.task_type)}</b>
+                <div className="ai-cell-sub">#{t.task_id}</div>
+              </td>
+              <td>{empRoleLabel(roleOfEmployee(c, t.employee_id))}助理</td>
+              <td>{instanceLabelBy(t.instance_id_suffix, t.woc_instance_id, wocById)}</td>
+              <td>
+                <span className={'ai-dot ' + stt.cls} /> {stt.t}
+              </td>
+              <td className="ai-cell-sub">{timeAgo(t.updated_at)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function RealTimeline({ c, wocById }: { c: AiConsolePayload; wocById: Map<string, InstanceWithStatus> }) {
+  const runs = c.recent_runs.slice().sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''));
+  if (runs.length === 0) return <div className="ai-note">暂无运行记录。</div>;
+  return (
+    <ul className="ai-timeline">
+      {runs.map((r: AiRunCard) => {
+        const stt = RUN_STATUS[r.status] ?? { t: r.status, cls: '' };
+        return (
+          <li key={r.run_id} className="ai-tl-item">
+            <span className="ai-tl-dot" />
+            <div className="ai-tl-body">
+              <div className="ai-tl-main">
+                <b>{empRoleLabel(roleOfEmployee(c, r.employee_id))}助理</b> {label(RUN_TYPE_LABELS, r.run_type)}
+                <span className="ai-tl-inst">@{instanceLabelBy(r.instance_id_suffix, r.woc_instance_id, wocById)}</span>
+              </div>
+              <div className="ai-tl-meta">
+                <span className={'ai-dot ' + stt.cls} /> {stt.t}
+                {r.redacted_summary ? <> · {r.redacted_summary}</> : null}
+                {timeAgo(r.started_at) ? <> · {timeAgo(r.started_at)}</> : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function RealPending({ c, wocById }: { c: AiConsolePayload; wocById: Map<string, InstanceWithStatus> }) {
+  const p = c.pending ?? {};
+  const waiting = c.recent_tasks.filter((t) => t.status === 'waiting_approval');
+  const rows: { label: string; value: number }[] = [
+    { label: '员工任务待人审', value: p.employee_tasks_waiting_approval ?? 0 },
+    { label: '回复待人工', value: p.reply_jobs_needs_human ?? 0 },
+    { label: '计划发送', value: p.send_actions_planned ?? 0 },
+    { label: '计划改备注', value: p.contact_remark_actions_planned ?? 0 },
+    { label: '计划群操作', value: p.group_operation_actions_planned ?? 0 },
+  ];
+  return (
+    <>
+      <div className="ai-warn">
+        以下为等待人工确认 / 计划中的动作汇总（真实计数）。<b>本页只读，不触发任何真实微信动作</b>，按钮均不可用。
+      </div>
+      <div className="ai-kpis" style={{ marginTop: 12 }}>
+        {rows.map((r) => (
+          <div key={r.label} className={'ai-kpi' + (r.value ? ' ai-kpi-warn' : '')}>
+            <span className="ai-kpi-val">{r.value}</span>
+            <span className="ai-kpi-lbl">{r.label}</span>
+          </div>
+        ))}
+      </div>
+      {waiting.length > 0 && (
+        <div className="ai-pending" style={{ marginTop: 12 }}>
+          {waiting.map((t) => (
+            <div key={t.task_id} className="ai-pending-item">
+              <div className="ai-pending-head">
+                <span className="ai-mono">任务 #{t.task_id}</span>
+                <span className="ai-card-sep">·</span> {label(TASK_TYPE_LABELS, t.task_type)} @{instanceLabelBy(t.instance_id_suffix, t.woc_instance_id, wocById)}
+              </div>
+              <div className="ai-pending-draft">{t.input_redacted || '（内容已脱敏）'}</div>
+              <div className="ai-pending-actions">
+                <button className="btn btn-primary" disabled title="后续接人审 API；当前不触发真实微信动作">通过并发送</button>
+                <button className="btn" disabled title="后续接人审 API；当前不触发真实微信动作">编辑后通过</button>
+                <button className="btn btn-danger" disabled title="后续接人审 API；当前不触发真实微信动作">驳回</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function RealBind({ c }: { c: AiConsolePayload }) {
+  const bp = c.bind_panel;
+  return (
+    <div className="ai-bind">
+      <div className="ai-bind-title">大秘书控制通道</div>
+      <p className="ai-bind-desc">
+        下列为大秘书总控与已授权云微信实例之间的绑定通道概览（真实数据，只读）。
+        <b> 不显示绑定 token / external id；生成新绑定仍走后续专用流程。</b>
+      </p>
+      {bp && bp.channel_count > 0 ? (
+        <table className="ai-table" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th>通道</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>已绑定 token</th>
+              <th>绑定时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bp.channels.map((ch) => (
+              <tr key={ch.channel_id}>
+                <td className="ai-mono">#{ch.channel_id}</td>
+                <td>{ch.channel_type}</td>
+                <td>
+                  <span className={'ai-dot ' + (ch.bind_status === 'active' ? 'st-on' : ch.bind_status === 'pending' ? 'st-warn' : 'st-off')} /> {ch.bind_status}
+                </td>
+                <td>{ch.has_bind_token ? '是' : '否'}</td>
+                <td className="ai-cell-sub">{ch.bound_at ? timeAgo(ch.bound_at) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="ai-note" style={{ marginTop: 10 }}>暂无控制通道。</div>
+      )}
+      <div className="ai-bind-actions" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" disabled title="生成新绑定走后续专用流程，本页只读">
+          生成绑定码
+        </button>
+        <span className="ai-bind-hint">生成新绑定走后续专用流程，本页只读</span>
+      </div>
+    </div>
+  );
+}
+
+// 真实模式：employee_id → 岗位角色（用于任务/运行行的员工标签）
+function roleOfEmployee(c: AiConsolePayload, employeeId: number): string {
+  const e = c.employee_cards.find((x) => x.employee_id === employeeId);
+  return e ? e.role : '';
+}
+
+// ==================== 演示模式组件（PR2 保留，作为 fallback） ====================
 
 function EmptyBinds({ isAdmin, onManage }: { isAdmin: boolean; onManage: () => void }) {
   return (
