@@ -3108,3 +3108,15 @@ button {
   border-radius: 12px;
   padding: 10px;
 }
+.ai-kb-import {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: var(--r-card);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+.ai-kb-textarea {
+  min-height: 140px;
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

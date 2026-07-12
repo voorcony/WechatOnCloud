@@ -18,6 +18,8 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { User } from './store.js';
 
@@ -33,6 +35,7 @@ export interface AiEmployeeConfig {
   secretaryId: number;
   cli: string;
   python: string;
+  kbDir: string;
 }
 
 function envFlag(v: string | undefined): boolean {
@@ -50,6 +53,7 @@ export function aiEmployeeConfig(): AiEmployeeConfig {
       process.env.WOC_AI_EMPLOYEE_CLI ||
       '/home/ubuntu/projects/ai-wechat-employee/scripts/woc_management_api.py',
     python: process.env.WOC_AI_EMPLOYEE_PYTHON || 'python3',
+    kbDir: process.env.WOC_AI_EMPLOYEE_KB_DIR || '/ai-employee-data/kb/uploads',
   };
 }
 
@@ -68,11 +72,20 @@ export function computeTextHash(text: string): string {
 
 // ---------- 子进程调用 CLI ----------
 // 只读、无 shell、带超时；成功返回解析后的 payload，失败一律抛 coded Error（上层转 fallback）。
-function runCli(cfg: AiEmployeeConfig, subcommand: 'console' | 'create-bind'): Promise<any> {
+function runCli(cfg: AiEmployeeConfig, subcommand: 'console' | 'create-bind' | 'import-kb-dir', extraArgs: string[] = []): Promise<any> {
   return new Promise((resolve, reject) => {
     execFile(
       cfg.python,
-      [cfg.cli, subcommand, '--db', cfg.db, '--tenant', cfg.tenant, '--secretary-id', String(cfg.secretaryId)],
+      [
+        cfg.cli,
+        subcommand,
+        '--db',
+        cfg.db,
+        '--tenant',
+        cfg.tenant,
+        ...(subcommand === 'import-kb-dir' ? [] : ['--secretary-id', String(cfg.secretaryId)]),
+        ...extraArgs,
+      ],
       { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
       (err, stdout) => {
         if (err) {
@@ -168,6 +181,13 @@ export interface KnowledgeSummary {
   document_count: number;
   chunk_count: number;
   documents: KnowledgeDocument[];
+}
+
+export interface KnowledgeImportResponse {
+  ok: true;
+  document_count: number;
+  chunk_count: number;
+  document_ids: number[];
 }
 export interface BindPayloadResponse {
   ok: true;
@@ -454,6 +474,42 @@ export async function buildConsoleResponse(
     visibleInstanceCount: visibleInstanceIds.length,
     console: consolePayload,
   };
+}
+
+
+function safeKbFilename(title: string): string {
+  const base = (title || 'knowledge').trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '');
+  return `${base || 'knowledge'}-${Date.now()}.md`;
+}
+
+export async function importAiEmployeeKnowledge(
+  title: string,
+  markdown: string,
+  log?: (code: string) => void,
+): Promise<KnowledgeImportResponse | null> {
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) return null;
+  const body = markdown.trim();
+  if (!body || body.length > 200_000) return null;
+  try {
+    await mkdir(cfg.kbDir, { recursive: true, mode: 0o700 });
+    const filename = safeKbFilename(title);
+    const target = path.join(cfg.kbDir, filename);
+    await writeFile(target, body.endsWith('\n') ? body : `${body}\n`, { encoding: 'utf8', mode: 0o600 });
+    const raw = await runCli(cfg, 'import-kb-dir', ['--kb-dir', cfg.kbDir, '--allowed-root', cfg.kbDir]);
+    if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'import_kb_dir') return null;
+    return {
+      ok: true,
+      document_count: num(raw.document_count) ?? 0,
+      chunk_count: num(raw.chunk_count) ?? 0,
+      document_ids: Array.isArray(raw.document_ids)
+        ? raw.document_ids.filter((x: unknown) => typeof x === 'number')
+        : [],
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'kb_import_failed');
+    return null;
+  }
 }
 
 export async function createAiEmployeeBindPayload(log?: (code: string) => void): Promise<BindPayloadResponse | null> {
