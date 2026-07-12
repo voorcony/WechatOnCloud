@@ -12,6 +12,11 @@ RUN npm run build
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# AI 员工中心 PR3 通过只读 CLI 读取 ai-wechat-employee management payload；
+# runtime 镜像需要 python3 执行挂载进来的 scripts/woc_management_api.py。
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 \
+  && rm -rf /var/lib/apt/lists/*
 COPY server/package.json ./
 RUN npm install
 COPY server/ ./
