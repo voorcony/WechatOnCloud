@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import QRCode from 'qrcode';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useInstances, statusOf } from '../AppShell';
@@ -15,6 +16,7 @@ import {
   type AiCustomerCard,
   type AiKnowledgeDocument,
   type AiBindPayloadResponse,
+  type AiKnowledgeImportResponse,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -502,28 +504,66 @@ function RealCustomers({ c, wocById }: { c: AiConsolePayload; wocById: Map<strin
     </>
   );
 }
-function RealKnowledge({ c }: { c: AiConsolePayload }) {
+function RealKnowledge({ c, onImported }: { c: AiConsolePayload; onImported: () => void }) {
   const k = c.knowledge_summary;
-  if (!k || k.document_count === 0) return <div className="ai-note">暂无知识库。后续可从本页接上传/导入；当前只读展示已入库文档和 chunk 计数。</div>;
+  const [title, setTitle] = useState('销售知识库');
+  const [markdown, setMarkdown] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<AiKnowledgeImportResponse | null>(null);
+  const [err, setErr] = useState('');
+  const submit = async () => {
+    setBusy(true);
+    setErr('');
+    setResult(null);
+    try {
+      const res = await api.importAiEmployeeKnowledge(title, markdown);
+      setResult(res);
+      setMarkdown('');
+      onImported();
+    } catch (e: any) {
+      setErr(e?.message || '导入失败');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
-      <div className="ai-kpis">
-        <div className="ai-kpi"><span className="ai-kpi-val">{k.document_count}</span><span className="ai-kpi-lbl">知识文档</span></div>
-        <div className="ai-kpi"><span className="ai-kpi-val">{k.chunk_count}</span><span className="ai-kpi-lbl">检索切片</span></div>
+      <div className="ai-kb-import">
+        <div className="ai-bind-title">导入知识库</div>
+        <p className="ai-bind-desc">上传 Markdown 到 AI 员工知识库，服务端写入私有目录并重建 chunk。普通后台只显示 hash/count，不展示正文。</p>
+        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="文档标题" />
+        <textarea className="input ai-kb-textarea" value={markdown} onChange={(e) => setMarkdown(e.target.value)} placeholder="# 退换货政策
+
+把商家话术/商品知识粘贴到这里" />
+        <div className="ai-bind-actions">
+          <button className="btn btn-primary" disabled={busy || !markdown.trim()} onClick={submit}>{busy ? '导入中…' : '导入 Markdown'}</button>
+          {result && <span className="ai-bind-hint">已导入 {result.document_count} 文档 / {result.chunk_count} chunk</span>}
+        </div>
+        {err && <div className="ai-warn" style={{ marginTop: 10 }}>{err}</div>}
       </div>
-      <table className="ai-table">
-        <thead><tr><th>文档</th><th>切片</th><th>内容 hash</th><th>更新</th></tr></thead>
-        <tbody>
-          {k.documents.map((d: AiKnowledgeDocument) => (
-            <tr key={d.document_id}>
-              <td><b>{d.title || '未命名文档'}</b><div className="ai-cell-sub">path hash · {d.source_path_hash}</div></td>
-              <td>{d.chunk_count}</td>
-              <td className="ai-mono">{d.content_hash}</td>
-              <td className="ai-cell-sub">{timeAgo(d.updated_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {!k || k.document_count === 0 ? (
+        <div className="ai-note">暂无知识库。可在上方粘贴 Markdown 导入。</div>
+      ) : (
+        <>
+          <div className="ai-kpis">
+            <div className="ai-kpi"><span className="ai-kpi-val">{k.document_count}</span><span className="ai-kpi-lbl">知识文档</span></div>
+            <div className="ai-kpi"><span className="ai-kpi-val">{k.chunk_count}</span><span className="ai-kpi-lbl">检索切片</span></div>
+          </div>
+          <table className="ai-table">
+            <thead><tr><th>文档</th><th>切片</th><th>内容 hash</th><th>更新</th></tr></thead>
+            <tbody>
+              {k.documents.map((d: AiKnowledgeDocument) => (
+                <tr key={d.document_id}>
+                  <td><b>{d.title || '未命名文档'}</b><div className="ai-cell-sub">path hash · {d.source_path_hash}</div></td>
+                  <td>{d.chunk_count}</td>
+                  <td className="ai-mono">{d.content_hash}</td>
+                  <td className="ai-cell-sub">{timeAgo(d.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </>
   );
 }
@@ -639,14 +679,17 @@ function RealPending({ c, wocById }: { c: AiConsolePayload; wocById: Map<string,
 function RealBind({ c }: { c: AiConsolePayload }) {
   const bp = c.bind_panel;
   const [payload, setPayload] = useState<AiBindPayloadResponse | null>(null);
+  const [qrUrl, setQrUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const createBind = async () => {
     setBusy(true);
     setErr('');
+    setQrUrl('');
     try {
       const r = await api.createAiEmployeeBind();
       setPayload(r);
+      setQrUrl(await QRCode.toDataURL(r.bind_payload_text, { margin: 1, width: 196 }));
     } catch (e: any) {
       setErr(e?.message || '生成失败');
     } finally {
@@ -683,7 +726,7 @@ function RealBind({ c }: { c: AiConsolePayload }) {
       {payload && (
         <div className="ai-bind-payload">
           <div className="ai-bind-title">一次性绑定 payload</div>
-          <div className="ai-qrbox">QR</div>
+          {qrUrl ? <img className="ai-qrbox" src={qrUrl} alt="扫码绑定秘书二维码" /> : <div className="ai-qrbox">生成中</div>}
           <div className="ai-bind-code">{payload.bind_payload_text}</div>
           <div className="ai-note">channel #{payload.channel_id} · payload hash {payload.bind_payload_hash} · token hash {payload.bind_token_hash}</div>
         </div>

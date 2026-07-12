@@ -165,6 +165,13 @@ export interface AiKnowledgeSummary {
   chunk_count: number;
   documents: AiKnowledgeDocument[];
 }
+export interface AiKnowledgeImportResponse {
+  ok: true;
+  document_count: number;
+  chunk_count: number;
+  document_ids: number[];
+}
+
 export interface AiBindPayloadResponse {
   ok: true;
   channel_id: number;

@@ -95,7 +95,7 @@ import {
   getFontFamily,
 } from './docker.js';
 import { createSession, getSession, destroySession, destroyUserSessions, SESSION_TTL_MS } from './sessions.js';
-import { buildConsoleResponse, createAiEmployeeBindPayload } from './ai-employee.js';
+import { buildConsoleResponse, createAiEmployeeBindPayload, importAiEmployeeKnowledge } from './ai-employee.js';
 import { parseHost, parseAllowedHosts, isRequestHostAllowed } from './host-guard.js';
 import { CURRENT_VERSION, versionInfo, ensureChecked, checkForUpdate, startUpdateChecker } from './version.js';
 import { triggerSelfUpdate } from './self-update.js';
@@ -422,6 +422,20 @@ app.post('/api/ai-employees/bind', async (req, reply) => {
   const payload = await createAiEmployeeBindPayload((code) => appendPanelLog('WARN', `[ai-employee] bind ${code}`));
   if (!payload) return reply.code(503).send({ error: 'AI 员工绑定服务未配置或不可用' });
   return payload;
+});
+
+app.post('/api/ai-employees/knowledge/import', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  if (u.role !== 'admin') return reply.code(403).send({ error: '仅管理员可导入知识库' });
+  const title = String((req.body as any)?.title ?? '').trim().slice(0, 80);
+  const markdown = String((req.body as any)?.markdown ?? '');
+  if (!markdown.trim()) return reply.code(400).send({ error: 'Markdown 内容不能为空' });
+  const result = await importAiEmployeeKnowledge(title || 'knowledge', markdown, (code) =>
+    appendPanelLog('WARN', `[ai-employee] kb-import ${code}`),
+  );
+  if (!result) return reply.code(503).send({ error: 'AI 员工知识库导入服务未配置或不可用' });
+  return result;
 });
 
 // 用户自助「卡死自愈」：当客户端检测到 VNC 多次干净重连仍连不上（多半是实例 KasmVNC 的 ws 接收器卡死——
