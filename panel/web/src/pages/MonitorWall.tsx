@@ -49,6 +49,42 @@ function seedOf(s: string): number {
   return h >>> 0;
 }
 
+
+function healthTone(m: AiConsoleModel): 'brand' | 'warn' | 'danger' {
+  if (m.health.sendFailed > 0 || m.health.serviceDegraded > 0) return 'danger';
+  if (m.health.verificationPending > 0 || m.health.pendingReplies > 0 || !m.health.visionSeen) return 'warn';
+  return 'brand';
+}
+
+function AiHealthStrip({ m }: { m: AiConsoleModel }) {
+  const tone = healthTone(m);
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div className="card-h">
+        <span className="title">AI 值守健康</span>
+        <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>
+          {tone === 'danger' ? '需处理' : tone === 'warn' ? '需关注' : '正常'}
+        </span>
+      </div>
+      <div className="card-b">
+        <div className="grid-4">
+          <div className="mini-stat"><span>员工在线 / 异常</span><b>{m.health.serviceOnline}/{m.health.serviceDegraded}</b></div>
+          <div className="mini-stat"><span>视觉运行时</span><b className={m.health.visionSeen ? '' : 'warn'}>{m.health.visionSeen ? '已上报' : '未上报'}</b></div>
+          <div className="mini-stat"><span>发送失败</span><b className={m.health.sendFailed ? 'danger' : ''}>{m.health.sendFailed}</b></div>
+          <div className="mini-stat"><span>待人审回复</span><b className={m.health.pendingReplies ? 'warn' : ''}>{m.health.pendingReplies}</b></div>
+        </div>
+        <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+          <span className="chip outline">service_state: {m.health.serviceState}</span>
+          <span className="chip outline">vision_source: {m.health.visionSource}</span>
+          <span className="chip outline">planned {m.health.sendPlanned} / executed {m.health.sendExecuted} / verified {m.health.sendVerified}</span>
+          {m.health.verificationPending > 0 && <span className="chip warn">发送取证待确认 {m.health.verificationPending}</span>}
+          {m.health.needsHuman > 0 && <span className="chip warn">needs_human {m.health.needsHuman}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function matchFilter(m: AiConsoleModel, inst: InstanceWithStatus, f: Filter): boolean {
   const r = getInstanceRiskSummary(m, inst);
   switch (f) {
@@ -205,6 +241,8 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
         )
       )}
 
+      <AiHealthStrip m={m} />
+
       {/* 实例概览 + 活跃度热力图 */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card-h">
@@ -225,7 +263,7 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
           </div>
           <div className="row" style={{ marginTop: 8, justifyContent: 'space-between', fontSize: 11, color: 'var(--text-3)' }}>
             <span>00:00</span>
-            <span>近 24 小时 · 每格 1 小时（占位演示）</span>
+            <span>近 24 小时 · 每格 1 小时（活跃度热力图仍为占位演示）</span>
             <span>23:00</span>
           </div>
         </div>
@@ -286,7 +324,7 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
       <div className="card" style={{ marginTop: 16, overflow: 'hidden' }}>
         <div className="card-h">
           <span className="title">安全审计概览</span>
-          <span className="chip outline" style={{ marginLeft: 'auto' }}>占位：无真实审计日志，基于安全派生字段生成</span>
+          <span className="chip outline" style={{ marginLeft: 'auto' }}>基于实例状态 + AI 安全摘要派生</span>
         </div>
         {audit.length === 0 ? (
           <div className="card-b"><div className="dim">暂无实例可审计。</div></div>

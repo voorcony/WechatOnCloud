@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInstances } from '../AppShell';
-import { api, type InstanceWithStatus, type AiConsolePayload, type AiEmployeeConsoleResponse, type AiTaskCard } from '../api';
+import { api, type InstanceWithStatus, type AiConsolePayload, type AiEmployeeConsoleResponse, type AiTaskCard, type AiSafeSummary } from '../api';
 
 // 客户画像 CRM（/customers）与待确认中心（/approvals）共享的只读数据模型。
 // 与总控台 / AI 员工中心保持一致的安全约束：只归一化 hash / suffix / 阶段 / 意向 / 风险 /
@@ -76,6 +76,75 @@ function deriveSuggestion(stage: string | null, risk: Risk, intent: number | nul
   if (stage === 'browsing') return '了解阶段：建议推送商品亮点 / 活动培育意向，控制打扰频率。';
   if (!recent) return '近期较沉默：建议低频唤醒 / 关怀触达，观察回应后再决定跟进力度。';
   return '持续观察：继续沉淀画像，等待明确意向信号后再主动跟进。';
+}
+
+
+export interface AiHealthSummary {
+  serviceOnline: number;
+  serviceOffline: number;
+  serviceDegraded: number;
+  serviceState: string;
+  visionSeen: boolean;
+  visionSource: string;
+  sendPlanned: number;
+  sendExecuted: number;
+  sendVerified: number;
+  sendFailed: number;
+  verificationPending: number;
+  pendingReplies: number;
+  needsHuman: number;
+}
+function safeMetric(s: AiSafeSummary | null | undefined, key: string): number {
+  const v = s?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+function safeString(s: AiSafeSummary | null | undefined, key: string, fallback = ''): string {
+  const v = s?.[key];
+  return typeof v === 'string' ? v : fallback;
+}
+function safeBool(s: AiSafeSummary | null | undefined, key: string): boolean {
+  const v = s?.[key];
+  return typeof v === 'boolean' ? v : false;
+}
+function healthFromConsole(c: AiConsolePayload): AiHealthSummary {
+  const service = c.service_status_summary;
+  const vision = c.vision_status_summary;
+  const send = c.send_status_summary;
+  const approval = c.approval_status_summary;
+  return {
+    serviceOnline: safeMetric(service, 'online_count'),
+    serviceOffline: safeMetric(service, 'offline_count'),
+    serviceDegraded: safeMetric(service, 'degraded_count'),
+    serviceState: safeString(service, 'latest_service_state', 'unknown'),
+    visionSeen: safeBool(vision, 'vision_runtime_seen'),
+    visionSource: safeString(vision, 'source', 'none'),
+    sendPlanned: safeMetric(send, 'planned_count'),
+    sendExecuted: safeMetric(send, 'executed_count'),
+    sendVerified: safeMetric(send, 'verified_count'),
+    sendFailed: safeMetric(send, 'failed_count'),
+    verificationPending: safeMetric(send, 'verification_pending_count'),
+    pendingReplies: safeMetric(approval, 'pending_reply_jobs'),
+    needsHuman: safeMetric(approval, 'needs_human_count'),
+  };
+}
+function demoHealth(instances: InstanceWithStatus[], pendingTotal: number): AiHealthSummary {
+  const online = instances.filter(instanceOnline).length;
+  const unavailable = Math.max(0, instances.length - online);
+  return {
+    serviceOnline: online,
+    serviceOffline: unavailable,
+    serviceDegraded: unavailable ? 1 : 0,
+    serviceState: online ? 'online' : instances.length ? 'degraded' : 'unknown',
+    visionSeen: online > 0,
+    visionSource: online > 0 ? 'demo' : 'none',
+    sendPlanned: Math.min(3, pendingTotal),
+    sendExecuted: online,
+    sendVerified: Math.max(0, online - 1),
+    sendFailed: unavailable ? 1 : 0,
+    verificationPending: pendingTotal ? 1 : 0,
+    pendingReplies: pendingTotal,
+    needsHuman: pendingTotal,
+  };
 }
 
 export interface CrmCustomer {
@@ -244,6 +313,7 @@ export interface AiConsoleModel {
   knowledgeDocCount: number;
   knowledgeChunkCount: number;
   grantedKeys: string[]; // 可见员工/实例被授予过的能力键并集（权限 / 记忆 / 审批）
+  health: AiHealthSummary;
 }
 
 interface Core {
@@ -256,6 +326,7 @@ interface Core {
   knowledgeDocCount: number;
   knowledgeChunkCount: number;
   grantedKeys: string[];
+  health: AiHealthSummary;
 }
 
 function docLabel(suffix: string): string {
@@ -376,6 +447,7 @@ function buildReal(c: AiConsolePayload, wocById: Map<string, InstanceWithStatus>
     knowledgeDocCount: k?.document_count ?? knowledgeDocs.length,
     knowledgeChunkCount: k?.chunk_count ?? knowledgeDocs.reduce((s, d) => s + d.chunks, 0),
     grantedKeys: [...granted],
+    health: healthFromConsole(c),
   };
 }
 
@@ -475,6 +547,7 @@ function buildDemo(instances: InstanceWithStatus[]): Core {
     knowledgeDocCount: knowledgeDocs.length,
     knowledgeChunkCount,
     grantedKeys: [...granted],
+    health: demoHealth(instances, pendingTotal),
   };
 }
 
