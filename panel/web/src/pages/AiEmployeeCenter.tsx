@@ -967,18 +967,20 @@ function ServiceHealthCard({ resp, runs, actionPlan, isAdmin, starting, onStartO
 }
 
 
-function ServiceActionPlanCard({ plan }: { plan: AiServiceActionPlanResponse }) {
+function ServiceActionPlanCard({ plan, isAdmin, starting, onStartObserveOnly }: { plan: AiServiceActionPlanResponse; isAdmin: boolean; starting: boolean; onStartObserveOnly: () => void | Promise<void> }) {
   return (
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <b>服务控制预案</b>
-        <span className="chip warn">dry-run disabled</span>
-        {(['start', 'stop', 'restart'] as const).map((a) => (
-          <button key={a} className="btn" disabled title="当前版本只展示预案，不执行写操作">{a}</button>
-        ))}
+        <b>服务控制</b>
+        <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
+        <button className="btn primary" disabled={!isAdmin || starting} onClick={onStartObserveOnly} title={isAdmin ? '二次确认后启动 observe-only，不发送微信' : '仅管理员可启动'}>
+          {starting ? '启动中…' : '启动观察'}
+        </button>
+        <button className="btn" disabled title="stop 暂未开放">stop</button>
+        <button className="btn" disabled title="restart 暂未开放">restart</button>
       </div>
       <div className="dim" style={{ marginTop: 8 }}>
-        当前接口只返回将会执行的计划：{plan.planned_command.slice(0, 3).join(' ')} …；正式启用前必须补二次确认、审计日志和生产 E2E。
+        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信。当前状态：{plan.execution_result?.status || plan.block_reason || '待确认'}。
       </div>
       <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
         {plan.safety_checks.slice(0, 4).map((x) => <span key={x} className="chip outline">{x}</span>)}
