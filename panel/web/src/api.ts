@@ -428,10 +428,14 @@ export type AiEmployeeServiceRunsResponse =
 
 export interface AiServiceActionPlanResponse {
   ok: true;
-  mode: 'dry_run_disabled';
+  mode: 'dry_run_disabled' | 'execute_guard_blocked';
   enabled: boolean;
   action: 'start' | 'stop' | 'restart';
   executable: false;
+  execute_requested: boolean;
+  confirm_required: boolean;
+  admin_required: boolean;
+  block_reason: string | null;
   planned_command: string[];
   safety_checks: string[];
   warnings: string[];
@@ -506,8 +510,11 @@ export const api = {
   aiEmployeeApprovalQueue: () => req<AiEmployeeApprovalQueueResponse>('/api/ai-employees/approval-queue'),
   aiEmployeeServiceHealth: () => req<AiEmployeeServiceHealthResponse>('/api/ai-employees/service-health'),
   aiEmployeeServiceRuns: () => req<AiEmployeeServiceRunsResponse>('/api/ai-employees/service-runs'),
-  aiEmployeeServiceActionPlan: (action: 'start' | 'stop' | 'restart') =>
-    req<AiServiceActionPlanResponse>('/api/ai-employees/service-action', { method: 'POST', body: JSON.stringify({ action }) }),
+  aiEmployeeServiceActionPlan: (action: 'start' | 'stop' | 'restart', opts: { execute?: boolean; confirm?: boolean } = {}) =>
+    req<AiServiceActionPlanResponse>('/api/ai-employees/service-action', {
+      method: 'POST',
+      body: JSON.stringify({ action, ...opts }),
+    }),
   createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
   importAiEmployeeKnowledge: (title: string, markdown: string) =>
     req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {
