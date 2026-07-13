@@ -149,10 +149,10 @@ export interface AiServiceRunsResponse {
 
 export interface AiServiceActionPlanResponse {
   ok: true;
-  mode: 'dry_run_disabled' | 'execute_guard_blocked';
+  mode: 'dry_run_disabled' | 'execute_guard_blocked' | 'executed';
   enabled: boolean;
   action: 'start' | 'stop' | 'restart';
-  executable: false;
+  executable: boolean;
   execute_requested: boolean;
   confirm_required: boolean;
   admin_required: boolean;
@@ -167,11 +167,63 @@ export interface AiServiceActionPlanResponse {
     run_status?: string;
     error_hash?: string;
   };
+  execution_result: null | {
+    status: string;
+    pid_alive: boolean;
+    record: null | {
+      recorded: boolean;
+      run_id?: number;
+      run_status?: string;
+      error_hash?: string;
+    };
+  };
 }
 
 
 const SERVICE_ACTIONS = ['start', 'stop', 'restart'] as const;
 type ServiceAction = (typeof SERVICE_ACTIONS)[number];
+
+
+function pickLifecycleRecord(v: any): AiServiceActionPlanResponse['audit_record'] {
+  if (!v || typeof v !== 'object') return null;
+  return {
+    recorded: !!v.recorded,
+    run_id: num(v.run_id) ?? undefined,
+    run_status: str(v.run_status) ?? undefined,
+    error_hash: str(v.error_hash) ?? undefined,
+  };
+}
+
+function runServiceStartObserveCli(cfg: AiEmployeeConfig): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const serviceCli = serviceCliPath(cfg);
+    if (!existsSync(serviceCli)) return reject(new Error('service_cli_missing'));
+    execFile(
+      cfg.python,
+      [
+        serviceCli,
+        'start',
+        '--db',
+        cfg.db,
+        '--tenant',
+        cfg.tenant,
+        '--employee-id',
+        String(cfg.secretaryId),
+        '--record-run',
+        '--reset-state',
+      ],
+      { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      (err, stdout) => {
+        try {
+          const parsed = JSON.parse(stdout);
+          resolve(parsed);
+        } catch {
+          reject(new Error((err as any)?.killed ? 'service_start_timeout' : 'service_start_bad_json'));
+        }
+      },
+    );
+  });
+}
 
 function runServiceActionPlanCli(cfg: AiEmployeeConfig, action: ServiceAction): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -217,40 +269,49 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
       ? 'admin_required'
       : !confirmed
         ? 'confirm_required'
-        : 'execute_path_disabled'
+        : selected !== 'start'
+          ? 'only_start_supported'
+          : null
     : null;
   let auditRecord: AiServiceActionPlanResponse['audit_record'] = null;
   if (isConfigured(cfg)) {
     try {
       const raw = await runServiceActionPlanCli(cfg, selected);
-      const record = raw?.record;
-      if (record && typeof record === 'object') {
-        auditRecord = {
-          recorded: !!record.recorded,
-          run_id: num(record.run_id) ?? undefined,
-          run_status: str(record.run_status) ?? undefined,
-          error_hash: str(record.error_hash) ?? undefined,
-        };
-      }
+      auditRecord = pickLifecycleRecord(raw?.record);
     } catch (e: any) {
       log?.(e?.message || 'service_plan_audit_failed');
       auditRecord = { recorded: false };
     }
   }
+  let executionResult: AiServiceActionPlanResponse['execution_result'] = null;
+  const shouldExecuteStart = isConfigured(cfg) && executeRequested && confirmed && isAdmin && selected === 'start';
+  if (shouldExecuteStart) {
+    try {
+      const rawStart = await runServiceStartObserveCli(cfg);
+      executionResult = {
+        status: str(rawStart?.status) ?? 'unknown',
+        pid_alive: ['running', 'already_running'].includes(str(rawStart?.status) ?? ''),
+        record: pickLifecycleRecord(rawStart?.record),
+      };
+    } catch (e: any) {
+      log?.(e?.message || 'service_start_failed');
+      executionResult = { status: 'failed', pid_alive: false, record: null };
+    }
+  }
   return {
     ok: true,
-    mode: executeRequested ? 'execute_guard_blocked' : 'dry_run_disabled',
+    mode: shouldExecuteStart ? 'executed' : executeRequested ? 'execute_guard_blocked' : 'dry_run_disabled',
     enabled: isConfigured(cfg),
     action: selected,
-    executable: false,
+    executable: shouldExecuteStart,
     execute_requested: executeRequested,
     confirm_required: executeRequested && !confirmed,
     admin_required: executeRequested && !isAdmin,
-    block_reason: blockReason,
+    block_reason: shouldExecuteStart ? null : blockReason,
     planned_command: [
       cfg.python,
       serviceCli,
-      selected,
+      shouldExecuteStart ? 'start' : selected,
       '--db',
       cfg.db || '<configured-db>',
       '--tenant',
@@ -265,11 +326,12 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
       '确认日志和返回值只展示 hash/count/status，不展示聊天正文',
     ],
     warnings: [
-      '当前接口只返回计划；execute=true 也会被守卫拦截，不执行 start/stop/restart',
-      '正式开启写操作前必须补二次确认、审计日志和生产 E2E',
+      '当前仅 start 在管理员二次确认后开放 observe-only；stop/restart 仍阻断',
+      'start 强制 --reset-state 且不传 --execute，不真实发送微信消息',
     ],
-    next_required: 'enable_execute_path_with_confirmation_and_audit',
+    next_required: shouldExecuteStart ? 'verify_observe_only_daemon_health_before_send_execute' : 'enable_execute_path_with_confirmation_and_audit',
     audit_record: auditRecord,
+    execution_result: executionResult,
   };
 }
 
