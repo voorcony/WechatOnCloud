@@ -198,8 +198,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
 
       <div className="content ai-page">
         <section className="ai-hero">
-          <div className="ai-hero-title">云微信实例之上的 AI 私域员工总控台</div>
-          <div className="ai-hero-flow">大秘书 → AI 员工 → 云微信实例 → 任务 → 时间线 → 待确认</div>
+          <div className="ai-hero-title">AI WeChat Console · 私域员工总控</div>
+          <div className="ai-hero-flow">Customer Profile → Knowledge Base → AI 员工 → 云微信实例 → 人工确认</div>
           <div className="ai-hero-scope">
             AI 员工可操作范围 = 当前账号在云微已有授权下可见的实例。管理员隐式拥有全部实例；子账号只看到被授权实例。
           </div>
@@ -367,6 +367,11 @@ function RealOverview({
                     <span className="ai-dot st-warn" /> 待确认 {ic.task_counts.waiting_approval}
                   </>
                 ) : null}
+                {ic.permission_count ? (
+                  <>
+                    <span className="ai-card-sep">·</span> 权限 {ic.permission_count}
+                  </>
+                ) : null}
               </div>
             );
             return inst ? (
@@ -396,6 +401,7 @@ function RealEmployees({ c }: { c: AiConsolePayload }) {
           <th>岗位</th>
           <th>状态</th>
           <th>绑定实例</th>
+          <th>策略</th>
           <th>任务</th>
           <th>运行</th>
         </tr>
@@ -403,11 +409,13 @@ function RealEmployees({ c }: { c: AiConsolePayload }) {
       <tbody>
         {c.employee_cards.map((e: AiEmployeeCard) => {
           const roleCn = empRoleLabel(e.role);
+          const displayName = e.name_suffix ? `${roleCn}助理 ···${e.name_suffix}` : `${roleCn}助理`;
           return (
             <tr key={e.employee_id}>
               <td>
-                <b>{roleCn}助理</b>
-                <div className="ai-cell-sub">EMP-{String(e.employee_id).padStart(2, '0')}</div>
+                <b>{displayName}</b>
+                <div className="ai-cell-sub">EMP-{String(e.employee_id).padStart(2, '0')} · name hash {e.name_hash.slice(0, 8)}</div>
+                <div className="ai-cell-sub">职责 hash {e.responsibility_hash.slice(0, 8)} · {e.responsibility_len} 字</div>
               </td>
               <td>
                 <span className={'ai-role ai-role-' + roleCn}>{roleCn}</span>
@@ -416,6 +424,10 @@ function RealEmployees({ c }: { c: AiConsolePayload }) {
                 <span className={'ai-dot ' + (e.status === 'active' ? 'st-on' : e.status === 'paused' ? 'st-warn' : '')} /> {e.status}
               </td>
               <td>{e.instance_count}</td>
+              <td>
+                审批 {e.approval_policy_count} / 记忆 {e.memory_policy_count}
+                <div className="ai-cell-sub">{[...e.approval_policy_keys, ...e.memory_policy_keys].slice(0, 3).join(' · ') || '无策略键'}</div>
+              </td>
               <td>{sumCounts(e.task_counts)}</td>
               <td>{sumCounts(e.run_counts)}</td>
             </tr>
@@ -465,6 +477,16 @@ function RealInstances({
               ) : null}
               任务 {sumCounts(ic.task_counts)}
               <span className="ai-card-sep">·</span> 运行 {sumCounts(ic.run_counts)}
+              {ic.permission_count ? (
+                <>
+                  <span className="ai-card-sep">·</span> 权限 {ic.permission_count}
+                </>
+              ) : null}
+              {Object.keys(ic.binding_scopes).length ? (
+                <>
+                  <span className="ai-card-sep">·</span> 范围 {Object.entries(ic.binding_scopes).map(([k, v]) => `${k}:${v}`).join(' / ')}
+                </>
+              ) : null}
             </div>
           );
           return inst ? (
@@ -572,7 +594,11 @@ function RealKnowledge({ c, onImported }: { c: AiConsolePayload; onImported: () 
             <tbody>
               {k.documents.map((d: AiKnowledgeDocument) => (
                 <tr key={d.document_id}>
-                  <td><b>{d.title || '未命名文档'}</b><div className="ai-cell-sub">path hash · {d.source_path_hash}</div></td>
+                  <td>
+                    <b>文档 · {d.title_suffix || d.title_hash.slice(0, 8)}</b>
+                    <div className="ai-cell-sub">title hash · {d.title_hash}</div>
+                    <div className="ai-cell-sub">path hash · {d.source_path_hash}</div>
+                  </td>
                   <td>{d.chunk_count}</td>
                   <td className="ai-mono">{d.content_hash}</td>
                   <td className="ai-cell-sub">{timeAgo(d.updated_at)}</td>

@@ -90,13 +90,15 @@ export interface VolEntry {
 }
 
 export interface VersionInfo {
-  current: string; // 当前构建版本（如 v1.2.0 / dev-<sha>）
-  latest: string | null; // 仓库上最新发布版（如 v1.2.1）；查不到为 null
-  hasUpdate: boolean; // 有可升级目标（正式版：latest>current；开发版：查到任一正式版）
-  isDev: boolean; // 当前是开发版（非正式 vX.Y.Z）
-  checkedAt: number; // 上次检查时间戳（ms）；0=尚未检查
-  source: string | null; // 数据来源：dockerhub / ghcr / dockerhub+ghcr
-  error: string | null; // 检查失败原因
+  current: string;
+  latest: string | null;
+  hasUpdate: boolean;
+  isDev: boolean;
+  checkedAt: number;
+  source: string | null;
+  error: string | null;
+  product?: string;
+  channel?: string;
 }
 
 // ---------- AI 员工中心（PR3：接 ai-wechat-employee 的 management_api 只读代理） ----------
@@ -106,8 +108,16 @@ export type AiTaskCounts = Record<string, number>;
 export type AiRunCounts = Record<string, number>;
 export interface AiEmployeeCard {
   employee_id: number;
+  name_hash: string;
+  name_suffix: string;
   role: string;
   status: string;
+  responsibility_hash: string;
+  responsibility_len: number;
+  approval_policy_keys: string[];
+  approval_policy_count: number;
+  memory_policy_keys: string[];
+  memory_policy_count: number;
   instance_count: number;
   task_counts: AiTaskCounts;
   run_counts: AiRunCounts;
@@ -120,6 +130,9 @@ export interface AiInstanceCard {
   woc_instance_id: string | null; // 命中的当前账号可见 WOC 实例 id（后端回填），可用于显示真实名/跳转
   bound_employee_ids: number[];
   active_binding_count: number;
+  binding_scopes: Record<string, number>;
+  permission_keys: string[];
+  permission_count: number;
   task_counts: AiTaskCounts;
   run_counts: AiRunCounts;
   latest_run_id: number | null;
@@ -167,7 +180,8 @@ export interface AiCustomerCard {
 }
 export interface AiKnowledgeDocument {
   document_id: number;
-  title: string;
+  title_hash: string;
+  title_suffix: string;
   source_path_hash: string;
   content_hash: string;
   chunk_count: number;
@@ -279,6 +293,11 @@ export const api = {
   // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
   createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
+  importAiEmployeeKnowledge: (title: string, markdown: string) =>
+    req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {
+      method: 'POST',
+      body: JSON.stringify({ title, markdown }),
+    }),
 
   // 版本与更新检测
   getVersion: () => req<VersionInfo>('/api/version'),
