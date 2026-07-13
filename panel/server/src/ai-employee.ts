@@ -157,16 +157,72 @@ export interface AiServiceActionPlanResponse {
   safety_checks: string[];
   warnings: string[];
   next_required: string;
+  audit_record: null | {
+    recorded: boolean;
+    run_id?: number;
+    run_status?: string;
+    error_hash?: string;
+  };
 }
 
 
 const SERVICE_ACTIONS = ['start', 'stop', 'restart'] as const;
 type ServiceAction = (typeof SERVICE_ACTIONS)[number];
 
-export function buildServiceActionPlan(action: unknown): AiServiceActionPlanResponse {
+function runServiceActionPlanCli(cfg: AiEmployeeConfig, action: ServiceAction): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const serviceCli = serviceCliPath(cfg);
+    if (!existsSync(serviceCli)) return reject(new Error('service_cli_missing'));
+    execFile(
+      cfg.python,
+      [
+        serviceCli,
+        'plan',
+        '--action',
+        action,
+        '--db',
+        cfg.db,
+        '--tenant',
+        cfg.tenant,
+        '--employee-id',
+        String(cfg.secretaryId),
+        '--record-run',
+      ],
+      { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      (err, stdout) => {
+        if (err) return reject(new Error((err as any).killed ? 'service_plan_timeout' : 'service_plan_failed'));
+        try {
+          resolve(JSON.parse(stdout));
+        } catch {
+          reject(new Error('service_plan_bad_json'));
+        }
+      },
+    );
+  });
+}
+
+export async function buildServiceActionPlan(action: unknown, log?: (code: string) => void): Promise<AiServiceActionPlanResponse> {
   const cfg = aiEmployeeConfig();
   const selected = SERVICE_ACTIONS.includes(action as ServiceAction) ? (action as ServiceAction) : 'start';
   const serviceCli = serviceCliPath(cfg);
+  let auditRecord: AiServiceActionPlanResponse['audit_record'] = null;
+  if (isConfigured(cfg)) {
+    try {
+      const raw = await runServiceActionPlanCli(cfg, selected);
+      const record = raw?.record;
+      if (record && typeof record === 'object') {
+        auditRecord = {
+          recorded: !!record.recorded,
+          run_id: num(record.run_id) ?? undefined,
+          run_status: str(record.run_status) ?? undefined,
+          error_hash: str(record.error_hash) ?? undefined,
+        };
+      }
+    } catch (e: any) {
+      log?.(e?.message || 'service_plan_audit_failed');
+      auditRecord = { recorded: false };
+    }
+  }
   return {
     ok: true,
     mode: 'dry_run_disabled',
@@ -195,6 +251,7 @@ export function buildServiceActionPlan(action: unknown): AiServiceActionPlanResp
       '正式开启写操作前必须补二次确认、审计日志和生产 E2E',
     ],
     next_required: 'enable_execute_path_with_confirmation_and_audit',
+    audit_record: auditRecord,
   };
 }
 

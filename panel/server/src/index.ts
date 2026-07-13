@@ -439,7 +439,7 @@ app.post('/api/ai-employees/service-action', async (req, reply) => {
   const u = requireAuth(req, reply);
   if (!u) return;
   const action = (req.body as any)?.action;
-  return buildServiceActionPlan(action);
+  return buildServiceActionPlan(action, (code) => appendPanelLog('WARN', `[ai-employee] service-action-plan ${code}`));
 });
 
 app.get('/api/ai-employees/service-runs', async (req, reply) => {

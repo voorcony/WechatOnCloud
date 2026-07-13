@@ -436,6 +436,12 @@ export interface AiServiceActionPlanResponse {
   safety_checks: string[];
   warnings: string[];
   next_required: string;
+  audit_record: null | {
+    recorded: boolean;
+    run_id?: number;
+    run_status?: string;
+    error_hash?: string;
+  };
 }
 
 export type AiEmployeeConsoleResponse =
