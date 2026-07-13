@@ -2,19 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useInstances } from '../AppShell';
-import { ThemeToggle } from '../AppShell';
 import { api, type PanelUser } from '../api';
 
-// 团队与权限（/team）
+// 团队与权限（/team）—— 完全对标模板 pageTeam：.page-h + .member-list / .member-row。
 // 复用 WOC 现有 auth / RBAC 语义，不新造租户：管理员看真实成员（用户名 / 角色 / 授权实例范围），
 // 子账号看自己的授权范围。成员的增删改 / 实例授权仍在「系统设置 → 用户」(/admin) 完成，本页只读概览 +
-// 跳转，绝不展示密码 / token / 明文凭据。
-
-const MenuIcon = (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M4 6h16M4 12h16M4 18h16" />
-  </svg>
-);
+// 跳转，绝不展示密码 / token / 明文凭据。数据均为真实（api.listUsers / useAuth），故用 src-note real。
 
 export const TeamIcon = (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -23,10 +16,13 @@ export const TeamIcon = (
   </svg>
 );
 
-const roleMeta = (role: PanelUser['role']): { label: string; cls: string } =>
-  role === 'admin' ? { label: '超级管理员', cls: 'role-super' } : { label: '运营（子账号）', cls: 'role-op' };
+// 角色 → chip 皮肤：超管 brand / 运营（子账号）accent；只读回退 outline。
+const roleMeta = (role: PanelUser['role']): { label: string; chip: string; avatar: string } =>
+  role === 'admin'
+    ? { label: '超级管理员', chip: 'brand', avatar: 'brand' }
+    : { label: '运营（子账号）', chip: 'accent', avatar: 'accent' };
 
-export default function Team({ onOpenMenu }: { onOpenMenu: () => void }) {
+export default function Team({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () => void }) {
   const nav = useNavigate();
   const { user } = useAuth();
   const { instances } = useInstances();
@@ -49,115 +45,93 @@ export default function Team({ onOpenMenu }: { onOpenMenu: () => void }) {
   }, [isAdmin]);
 
   const rows: PanelUser[] = isAdmin ? users ?? [] : user ? [user] : [];
-  const admins = rows.filter((u) => u.role === 'admin').length;
-  const subs = rows.filter((u) => u.role !== 'admin').length;
+  const loading = isAdmin && users === null && !err;
 
   return (
-    <div className="ws-page">
-      <header className="ws-head">
-        <button className="ws-menu" onClick={onOpenMenu} aria-label="菜单">
-          {MenuIcon}
-        </button>
-        <span className="ws-title">团队与权限</span>
-        <ThemeToggle />
-      </header>
+    <div>
+      <div className="page-h">
+        <div>
+          <h1>团队与权限</h1>
+          <p>沿用系统账号与实例授权（RBAC）：管理员可操作全部实例，子账号仅能操作被授权实例——这正是 AI 员工的可操作范围边界。</p>
+        </div>
+        <div className="act">
+          <button className="btn" disabled title="成员管理在「系统设置 → 用户」，后续接入">邀请成员</button>
+          {isAdmin && <button className="btn primary" onClick={() => nav('/admin?tab=users')}>在系统设置管理 ›</button>}
+        </div>
+      </div>
 
-      <div className="content">
-        <div className="page-pad">
-          <div className="ai-note">
-            团队沿用系统的账号与实例授权（RBAC）：管理员可操作全部实例，子账号仅能操作被授权实例——
-            这也正是 AI 员工的可操作范围边界。成员管理与实例授权在
-            <button className="btn-text" style={{ padding: '0 4px' }} onClick={() => nav('/admin?tab=users')}>系统设置 → 用户</button>
-            完成，本页只读。
-          </div>
+      <div className="src-note real">
+        <span className="d" /> 已接入真实成员与授权（只读）· 来源 WOC 账号系统。展示用户名 / 角色 / 授权实例范围（安全字段），不展示密码 / token。
+      </div>
 
-          <div className="ai-kpis" style={{ marginTop: 12 }}>
-            <div className="ai-kpi">
-              <span className="ai-kpi-val">{isAdmin ? rows.length : '—'}</span>
-              <span className="ai-kpi-lbl">成员总数</span>
-            </div>
-            <div className="ai-kpi">
-              <span className="ai-kpi-val">{isAdmin ? admins : '—'}</span>
-              <span className="ai-kpi-lbl">管理员</span>
-            </div>
-            <div className="ai-kpi">
-              <span className="ai-kpi-val">{isAdmin ? subs : '—'}</span>
-              <span className="ai-kpi-lbl">子账号</span>
-            </div>
-            <div className="ai-kpi">
-              <span className="ai-kpi-val">{instances.length}</span>
-              <span className="ai-kpi-lbl">{isAdmin ? '可授权实例' : '我的授权实例'}</span>
-            </div>
-          </div>
-
-          {!isAdmin ? (
-            <div className="ai-sec" style={{ marginTop: 14 }}>
-              <div className="ai-sec-title">我的权限范围</div>
-              <div className="team-row">
-                <span className="team-av">{(user?.username ?? '?').slice(0, 1).toUpperCase()}</span>
-                <div className="team-id">
-                  <span className="team-name">{user?.username}</span>
-                  <span className="team-scope">{instances.length} 个被授权实例 · AI 员工仅在这些实例内动作</span>
-                </div>
-                <span className="ai-chip role-op">运营（子账号）</span>
-              </div>
-              <div className="ai-choice-row" style={{ marginTop: 10 }}>
-                {instances.length === 0 ? (
-                  <span className="ai-note" style={{ margin: 0 }}>暂无被授权实例，请联系管理员分配。</span>
-                ) : (
-                  instances.map((i) => <span key={i.id} className="ai-choice on" style={{ cursor: 'default' }}>{i.name}</span>)
-                )}
-              </div>
-              <div className="ai-set-hint">如需调整授权范围或新增成员，请联系管理员在「系统设置」中操作。</div>
-            </div>
-          ) : (
-            <div className="ai-sec" style={{ marginTop: 14 }}>
-              <div className="ai-sec-title">
-                成员
-                <button className="btn-text ai-sec-more" onClick={() => nav('/admin?tab=users')}>在系统设置管理 ›</button>
-              </div>
-              {err && <div className="ai-warn">{err}</div>}
-              {users === null && !err ? (
-                <div className="ai-note">加载成员…</div>
-              ) : rows.length === 0 ? (
-                <div className="ai-note">暂无成员。</div>
-              ) : (
-                <div className="team-list">
-                  {rows.map((u) => {
-                    const rm = roleMeta(u.role);
-                    const scoped = u.role === 'admin' ? instances.map((i) => i.id) : u.allowedInstances;
-                    return (
-                      <div key={u.id} className="team-row">
-                        <span className={'team-av ' + rm.cls}>{u.username.slice(0, 1).toUpperCase()}</span>
-                        <div className="team-id">
-                          <span className="team-name">
-                            {u.username}
-                            {u.disabled && <span className="ai-chip role-off">已停用</span>}
-                            {u.mustChangePassword && <span className="ai-chip risk-medium">默认密码</span>}
-                          </span>
-                          <span className="team-scope">
-                            {u.role === 'admin' ? '全部实例（隐式授权）' : `${scoped.length} 个授权实例`}
-                          </span>
-                        </div>
-                        <div className="team-insts">
-                          {scoped.slice(0, 4).map((id) => (
-                            <span key={id} className="ai-chip role-inst">{instName(id)}</span>
-                          ))}
-                          {scoped.length > 4 && <span className="ai-chip role-inst">+{scoped.length - 4}</span>}
-                        </div>
-                        <span className={'ai-chip ' + rm.cls}>{rm.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="ai-set-hint">
-                展示用户名 / 角色 / 授权实例范围（安全字段）；不展示密码 / token。增删改与授权在系统设置完成。
-              </div>
+      {err ? (
+        <div className="empty-state">
+          <div className="empty-blob">⚠️</div>
+          <div className="empty-title">成员加载失败</div>
+          <div className="empty-sub">{err}</div>
+        </div>
+      ) : loading ? (
+        <div className="loading">加载成员…</div>
+      ) : rows.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-blob">👥</div>
+          <div className="empty-title">暂无成员</div>
+          <div className="empty-sub">成员的增删改与实例授权在「系统设置 → 用户」完成，本页为只读概览。</div>
+          {isAdmin && (
+            <div className="empty-action">
+              <button className="btn primary" onClick={() => nav('/admin?tab=users')}>去系统设置</button>
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="member-list">
+          {rows.map((u) => {
+            const rm = roleMeta(u.role);
+            const scoped = u.role === 'admin' ? instances.map((i) => i.id) : u.allowedInstances;
+            const self = u.id === user?.id;
+            return (
+              <div key={u.id} className="member-row">
+                <span className={'avatar ' + rm.avatar}>{u.username.slice(0, 1).toUpperCase()}</span>
+
+                <div style={{ minWidth: 0 }}>
+                  <div className="row" style={{ gap: 6 }}>
+                    <b className="cut">{u.username}</b>
+                    {self && <span className="chip outline">我</span>}
+                    {u.disabled && <span className="chip danger">已停用</span>}
+                    {u.mustChangePassword && <span className="chip warn">默认密码</span>}
+                  </div>
+                  <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>
+                    {u.role === 'admin'
+                      ? '全部实例（隐式授权）· AI 员工可在所有实例内动作'
+                      : `${scoped.length} 个授权实例 · AI 员工仅在这些实例内动作`}
+                  </div>
+                </div>
+
+                <div className="col-inst">
+                  {scoped.length === 0 ? (
+                    <span className="chip outline">未授权</span>
+                  ) : (
+                    <>
+                      {scoped.slice(0, 3).map((id) => (
+                        <span key={id} className="chip">{instName(id)}</span>
+                      ))}
+                      {scoped.length > 3 && <span className="chip outline">+{scoped.length - 3}</span>}
+                    </>
+                  )}
+                </div>
+
+                <div className="col-role">
+                  <span className={'chip ' + rm.chip}>{rm.label}</span>
+                </div>
+
+                <div className="act">
+                  <button className="btn sm ghost" disabled title="成员编辑在「系统设置 → 用户」，后续接入">编辑</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

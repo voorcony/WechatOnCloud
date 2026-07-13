@@ -994,16 +994,25 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
   };
 
   const title = inst?.name || '实例';
+  const statusText = inst ? (offline ? (inst.runtime === 'missing' ? '未创建' : '已停止') : installed ? '在线运行' : '待安装') : '加载中';
+  const statusCls = inst ? (offline ? 'off' : installed ? 'on' : 'warn') : 'busy';
 
   return (
-    <div className="ws-page">
-      <header className="ws-head">
-        <button className="ws-menu" onClick={onOpenMenu} aria-label="菜单">
-          {MenuIcon}
-        </button>
-        <span className="ws-title">{title}</span>
+    <div className="ws-page ai-instance-page">
+      <header className="ws-head ai-instance-head">
+        <div className="ai-instance-titlebar">
+          <button className="ws-menu ai-instance-menu" onClick={onOpenMenu} aria-label="菜单">
+            {MenuIcon}
+          </button>
+          <div>
+            <div className="ai-instance-eyebrow">实例工作台 / VNC 接管</div>
+            <div className="ws-title ai-instance-title">{title}</div>
+          </div>
+          <span className={'ai-instance-status ' + statusCls}>{statusText}</span>
+          {inst && <span className="ai-instance-id">···{inst.id.slice(-6)}</span>}
+        </div>
         {showVnc && (
-          <>
+          <div className="ai-instance-actions">
             <button
               className="ws-action"
               title="文件传输"
@@ -1062,7 +1071,7 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
                 </button>
               </>
             )}
-          </>
+          </div>
         )}
       </header>
 

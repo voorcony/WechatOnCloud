@@ -1,22 +1,18 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { useUI, PasswordInput } from './ui';
 import { api, appProfile, type InstanceWithStatus } from './api';
 import { InstanceIcon } from './AppIcon';
 import { getThemeMode, applyThemeMode, nextThemeMode, resolveDark, type ThemeMode } from './theme';
-import InstanceView from './pages/Desktop';
 import Admin from './pages/Admin';
-import AiEmployeeCenter, { AiEmployeeIcon } from './pages/AiEmployeeCenter';
-import MonitorWall from './pages/MonitorWall';
-import Console, { ConsoleIcon } from './pages/Console';
-import Customers from './pages/Customers';
-import Approvals from './pages/Approvals';
-import Inbox, { InboxIcon } from './pages/Inbox';
-import Knowledge, { KnowledgeIcon } from './pages/Knowledge';
-import Tools, { ToolsIcon } from './pages/Tools';
-import Team, { TeamIcon } from './pages/Team';
-import Settings from './pages/Settings';
+import { AiEmployeeIcon } from './pages/AiEmployeeCenter';
+import { ConsoleIcon } from './pages/Console';
+import { InboxIcon } from './pages/Inbox';
+import { KnowledgeIcon } from './pages/Knowledge';
+import { ToolsIcon } from './pages/Tools';
+import { TeamIcon } from './pages/Team';
+import AiConsoleShell from './AiConsoleShell';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -112,6 +108,28 @@ const Icon = {
 
 export default function AppShell() {
   const state = useInstancesLoader();
+  const loc = useLocation();
+
+  // 路由切换时刷新共享实例列表：管理页用的是独立列表，新建/安装实例后不会动到这个共享 context，
+  // 否则进入实例页 / 回主页都读到陈旧列表（实例缺失），需手动刷新整页才出现。导航即拉一次最新即可。
+  // 不清空旧数据，拉取期间沿用旧列表，无闪烁。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => void state.reload(), [loc.pathname]);
+
+  // 分流：/admin（实例·账号管理）保留基础设施外壳；
+  //       AI Console 产品页与 /i/:id VNC 实例工作台统一走模板化 AiConsoleShell。
+  return (
+    <InstancesCtx.Provider value={state}>
+      <Routes>
+        <Route path="/admin" element={<InfraShell />} />
+        <Route path="/*" element={<AiConsoleShell />} />
+      </Routes>
+    </InstancesCtx.Provider>
+  );
+}
+
+// 基础设施外壳：仅承载 /admin 的实例/账号底层管理。
+function InfraShell() {
   const { refresh } = useAuth();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('woc_sb_collapsed') === '1');
   const [drawer, setDrawer] = useState(false);
@@ -125,24 +143,14 @@ export default function AppShell() {
     m.addEventListener('change', h);
     return () => m.removeEventListener('change', h);
   }, []);
+  useEffect(() => setDrawer(false), [loc.pathname]);
 
-  useEffect(() => setDrawer(false), [loc.pathname]); // 路由变化关抽屉
-
-  // 路由切换时刷新共享实例列表：管理页用的是独立列表，新建/安装实例后不会动到这个共享 context，
-  // 否则进入实例页 / 回主页都读到陈旧列表（实例缺失），需手动刷新整页才出现。导航即拉一次最新即可。
-  // 不清空旧数据，拉取期间沿用旧列表，无闪烁。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => void state.reload(), [loc.pathname]);
-
-  // 移动端不收成窄栏（改用抽屉）；折叠仅桌面生效
   const railed = collapsed && isDesktop;
-
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       localStorage.setItem('woc_sb_collapsed', c ? '0' : '1');
       return !c;
     });
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
@@ -158,30 +166,16 @@ export default function AppShell() {
   const openChangePassword = () => setShowPw(true);
 
   return (
-    <InstancesCtx.Provider value={state}>
+    <>
       <div className={'shell' + (railed ? ' collapsed' : '') + (drawer ? ' drawer-open' : '')}>
         <Sidebar collapsed={railed} onToggleCollapsed={toggleCollapsed} />
         <div className="shell-backdrop" onClick={() => setDrawer(false)} />
         <main className="workspace">
-          <Routes>
-            <Route path="/" element={<Console onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
-            <Route path="/inbox" element={<Inbox onOpenMenu={openMenu} />} />
-            <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
-            <Route path="/customers" element={<Customers onOpenMenu={openMenu} />} />
-            <Route path="/knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
-            <Route path="/tools" element={<Tools onOpenMenu={openMenu} />} />
-            <Route path="/approvals" element={<Approvals onOpenMenu={openMenu} />} />
-            <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
-            <Route path="/team" element={<Team onOpenMenu={openMenu} />} />
-            <Route path="/settings" element={<Settings onOpenMenu={openMenu} />} />
-            <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
-            <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />
         </main>
       </div>
       {showPw && <ChangePassword onClose={() => setShowPw(false)} onSaved={() => refresh()} />}
-    </InstancesCtx.Provider>
+    </>
   );
 }
 
