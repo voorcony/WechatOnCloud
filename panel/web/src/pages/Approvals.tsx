@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api, type AiApprovalQueuePayload } from '../api';
 import { useAiConsoleModel, riskDotCls, RISK_LABEL, type ApprovalAction, type Risk } from './aiConsoleModel';
 
 // 待确认中心（/approvals）—— 对标模板「待确认队列」：KPI + 队列（左）+ 选中动作详情（右）。
@@ -18,18 +19,88 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 const riskChip: Record<Risk, string> = { high: 'danger', medium: 'warn', low: 'brand' };
 const riskWord: Record<Risk, string> = { high: '高', medium: '中', low: '低' };
 
+function minutesAgo(iso: string | null): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const m = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  if (m < 1440) return `${Math.floor(m / 60)} 小时前`;
+  return `${Math.floor(m / 1440)} 天前`;
+}
+function instLabel(wocId: string | null, suffix: string | null, names: Map<string, string>): string {
+  return wocId ? names.get(wocId) ?? '可见实例' : suffix ? `实例 ···${suffix}` : '未关联实例';
+}
+function queueActions(q: AiApprovalQueuePayload, instanceNames: Map<string, string>): ApprovalAction[] {
+  const replies = q.reply_job_cards.map((c): ApprovalAction => ({
+    key: `reply:${c.reply_job_id}`,
+    type: 'reply_jobs_needs_human',
+    typeLabel: '回复待人工',
+    instName: instLabel(c.woc_instance_id, c.instance_id_suffix, instanceNames),
+    instId: c.woc_instance_id,
+    employeeName: 'AI 回复草稿',
+    risk: 'medium',
+    riskReason: `AI 回复需人工确认；reply hash ${c.reply_text_hash.slice(0, 10)}，知识片段 ${c.retrieved_chunk_count}，记忆 ${c.memory_count}。`,
+    redacted: `回复正文已脱敏：${c.reply_text_len} 字 · hash ${c.reply_text_hash.slice(0, 12)} · 会话 ${c.conversation_key_hash.slice(0, 10)}`,
+    ago: minutesAgo(c.created_at),
+    status: c.status,
+  }));
+  const sends = q.send_action_cards.map((c): ApprovalAction => ({
+    key: `send:${c.send_action_id}`,
+    type: 'send_actions_planned',
+    typeLabel: '计划发送',
+    instName: instLabel(c.woc_instance_id, c.instance_id_suffix, instanceNames),
+    instId: c.woc_instance_id,
+    employeeName: '发送执行器',
+    risk: 'high',
+    riskReason: `计划外发动作必须人工确认；mode=${c.mode}，has_plan=${c.has_plan ? 'yes' : 'no'}。`,
+    redacted: `计划发送正文已脱敏：reply hash ${c.reply_text_hash.slice(0, 12)} · 会话 ${c.conversation_key_hash.slice(0, 10)}`,
+    ago: minutesAgo(c.created_at),
+    status: c.status,
+  }));
+  const tasks = q.employee_task_cards.map((c): ApprovalAction => ({
+    key: `task:${c.task_id}`,
+    type: 'employee_tasks_waiting_approval',
+    typeLabel: '员工任务待人审',
+    instName: instLabel(c.woc_instance_id, c.instance_id_suffix, instanceNames),
+    instId: c.woc_instance_id,
+    employeeName: c.employee_id != null ? `AI 员工 #${c.employee_id}` : 'AI 员工',
+    risk: 'medium',
+    riskReason: `AI 员工任务 ${c.task_type} 等待人工复核；input hash ${c.input_hash?.slice(0, 10) || '—'}。`,
+    redacted: c.input_redacted || '任务输入已脱敏，仅保留 hash / 状态 / 计数。',
+    ago: minutesAgo(c.created_at),
+    status: c.status,
+  }));
+  return [...replies, ...sends, ...tasks];
+}
+
 export default function Approvals(_props: { onOpenMenu?: () => void }) {
   const nav = useNavigate();
   const m = useAiConsoleModel();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [selKey, setSelKey] = useState<string | null>(null);
+  const [approvalQueue, setApprovalQueue] = useState<AiApprovalQueuePayload | null>(null);
+  const [approvalProbed, setApprovalProbed] = useState(false);
 
-  const filtered = useMemo(() => (filter === 'all' ? m.actions : m.actions.filter((a) => a.type === filter)), [m.actions, filter]);
-  const selected = filtered.find((a) => a.key === selKey) ?? filtered[0] ?? m.actions[0] ?? null;
-  const c = m.pendingCounts;
+  useEffect(() => {
+    setApprovalProbed(false);
+    api.aiEmployeeApprovalQueue()
+      .then((r) => setApprovalQueue(r.mode === 'real' && r.queue.found ? r.queue : null))
+      .catch(() => setApprovalQueue(null))
+      .finally(() => setApprovalProbed(true));
+  }, []);
+
+  const instanceNames = useMemo(() => new Map(m.instances.map((i) => [i.id, i.name])), [m.instances]);
+  const realActions = useMemo(() => (approvalQueue ? queueActions(approvalQueue, instanceNames) : null), [approvalQueue, instanceNames]);
+  const actions = realActions ?? m.actions;
+  const filtered = useMemo(() => (filter === 'all' ? actions : actions.filter((a) => a.type === filter)), [actions, filter]);
+  const selected = filtered.find((a) => a.key === selKey) ?? filtered[0] ?? actions[0] ?? null;
+  const c = approvalQueue?.summary ?? m.pendingCounts;
   const empty = m.loaded && m.instances.length === 0;
-  const ready = m.loaded && m.probed;
-  const typeCount = (f: FilterKey) => (f === 'all' ? m.actions.length : m.actions.filter((a) => a.type === f).length);
+  const ready = m.loaded && m.probed && approvalProbed;
+  const pendingTotal = c.pending_total ?? Object.values(c).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
+  const typeCount = (f: FilterKey) => (f === 'all' ? actions.length : actions.filter((a) => a.type === f).length);
 
   return (
     <div>
@@ -39,14 +110,14 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
           <p>AI 起草的敏感动作：发送、报价、改备注、群操作等。人在环，等待人工确认后才落地。</p>
         </div>
         <div className="act">
-          <span className={'chip ' + (m.pendingTotal ? 'danger' : 'brand')}>{m.pendingTotal} 条待处理</span>
+          <span className={'chip ' + (pendingTotal ? 'danger' : 'brand')}>{pendingTotal} 条待处理</span>
           <button className="btn" disabled title="真实审批写操作 API 后续接入">全部放行</button>
         </div>
       </div>
 
       {m.probed && (
         m.real ? (
-          <div className="src-note real"><span className="d" /> 已接入真实待确认计数 · 来源 ai-wechat-employee（只读，已按你可见实例过滤）</div>
+          <div className="src-note real"><span className="d" /> {approvalQueue ? '已接入真实待确认卡片' : '已接入真实待确认计数'} · 来源 ai-wechat-employee（只读，已按你可见实例过滤）</div>
         ) : (
           <div className="src-note demo"><span className="d" /> 演示数据：尚未配置 AI 员工数据源。待确认为 deterministic 占位队列，仅展示聚合计数。</div>
         )
@@ -57,7 +128,7 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
       </div>
 
       <div className="kpi-grid">
-        <div className="kpi"><div className="label">总待确认</div><div className="value">{m.pendingTotal}</div><div className={'delta' + (m.pendingTotal ? ' warn' : '')}>{m.pendingTotal ? '需人工审核' : '暂无待办 🎉'}</div></div>
+        <div className="kpi"><div className="label">总待确认</div><div className="value">{pendingTotal}</div><div className={'delta' + (pendingTotal ? ' warn' : '')}>{pendingTotal ? '需人工审核' : '暂无待办 🎉'}</div></div>
         <div className="kpi"><div className="label">回复待人工</div><div className="value">{c.reply_jobs_needs_human ?? 0}</div><div className="delta muted">AI 起草回复草稿</div></div>
         <div className="kpi"><div className="label">计划发送</div><div className="value">{c.send_actions_planned ?? 0}</div><div className={'delta' + ((c.send_actions_planned ?? 0) ? ' down' : ' muted')}>主动外发动作</div></div>
         <div className="kpi"><div className="label">群操作</div><div className="value">{c.group_operation_actions_planned ?? 0}</div><div className={'delta' + ((c.group_operation_actions_planned ?? 0) ? ' down' : ' muted')}>群公告 / 成员变更</div></div>
@@ -71,7 +142,7 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
         </div>
       ) : !ready ? (
         <div className="loading">加载待确认队列…</div>
-      ) : m.actions.length === 0 ? (
+      ) : actions.length === 0 ? (
         <div className="empty-state" style={{ marginTop: 16 }}>
           <div className="empty-blob">🎉</div>
           <div className="empty-title">当前没有等待确认的动作</div>
