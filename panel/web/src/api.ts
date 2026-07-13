@@ -233,6 +233,58 @@ export interface AiConsolePayload {
     channels: AiBindChannel[];
   } | null;
 }
+// ---------- AI 员工中心（PR5：可编辑人格 + 自动回复策略写路径） ----------
+// 后端命令缺失 / 未部署时统一返回 { ok:false, mode:'unavailable' }，前端 inline 提示、不假成功。
+export interface AiActionUnavailable {
+  ok: false;
+  mode: 'unavailable';
+  reason: 'backend_command_missing' | 'not_configured' | 'invalid_request';
+}
+export interface AiApplyTemplateResult {
+  ok: true;
+  mode: 'applied';
+  employee_id: number;
+  template_key: string;
+  persona_hash: string;
+  policy_keys: string[];
+  guardrail_keys: string[];
+}
+export interface AiSavePolicyResult {
+  ok: true;
+  mode: 'saved';
+  employee_id: number;
+  auto_reply_mode: string;
+  scope: string;
+  rate_limit_seconds: number;
+  guardrail_keys: string[];
+  persona_hash: string;
+}
+export interface AiAutoReplyTestResult {
+  ok: true;
+  mode: 'evaluated';
+  employee_id: number;
+  decision: string; // auto_send | needs_human | suggest_only
+  risk_level: string; // low | medium | high
+  matched_guardrails: string[];
+  redacted_summary: string;
+}
+// 前端提交的人格 / 自动回复策略草稿（模板文本 + allowlist 键），绝不含聊天正文 / token。
+export interface AiPersonaDraft {
+  displayName: string;
+  serviceDomain: string;
+  post: string; // pre_sale | in_sale | after_sale
+  tones: string[]; // professional | fast | human_like | not_pushy
+  goals: string;
+  forbidden: string;
+}
+export interface AiAutoReplyDraft {
+  mode: string; // disabled | suggest_only | auto_send_test
+  scope: string; // current_instance | bound_instances | whitelist
+  rateLimitSeconds: number;
+  rateLimitCount: number;
+  guardrails: string[]; // refund | ban | payment | cheat | link | large_order | complaint
+}
+
 export type AiEmployeeConsoleResponse =
   | {
       enabled: false;
@@ -297,6 +349,23 @@ export const api = {
     req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {
       method: 'POST',
       body: JSON.stringify({ title, markdown }),
+    }),
+
+  // PR5：可编辑人格 + 自动回复策略。后端未部署时返回 { ok:false, mode:'unavailable' }（HTTP 200）。
+  applyAiEmployeeTemplate: (employeeId: number, templateKey: string) =>
+    req<AiApplyTemplateResult | AiActionUnavailable>(`/api/ai-employees/${employeeId}/apply-template`, {
+      method: 'POST',
+      body: JSON.stringify({ templateKey }),
+    }),
+  saveAiEmployeePolicy: (employeeId: number, persona: AiPersonaDraft, autoReply: AiAutoReplyDraft) =>
+    req<AiSavePolicyResult | AiActionUnavailable>(`/api/ai-employees/${employeeId}/policy`, {
+      method: 'POST',
+      body: JSON.stringify({ persona, autoReply }),
+    }),
+  runAiEmployeeAutoReplyTest: (employeeId: number, sample: string) =>
+    req<AiAutoReplyTestResult | AiActionUnavailable>(`/api/ai-employees/${employeeId}/auto-reply-test`, {
+      method: 'POST',
+      body: JSON.stringify({ sample }),
     }),
 
   // 版本与更新检测

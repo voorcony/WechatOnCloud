@@ -190,6 +190,45 @@ getInstanceTimeline(m, inst)       OCR → 画像 → 起草回复 → 待确认
 
 沿用 PR2/PR3 约束：只渲染 hash / suffix / count / status / keys / stage·risk·intent / 脱敏摘要与派生文案；禁止聊天正文、回复正文、token、绑定串明文、知识库原始标题、员工原始姓名、原始职责。接管复用已有控制权 API；无真实写 API 的动作（恢复 AI / 批准等）保持 disabled 或仅跳转，不假执行。
 
+## 信息架构（PR5：人格可编辑 + 游戏代练客服自动回复测试模式）
+
+PR5 把 `/ai-employees` 员工详情 pane 从「只读身份卡」升级成可编辑的 **AI 员工人格 + 自动回复策略** 配置台：可配置游戏代练客服人格、允许在受控范围内测试自动回复而无需逐条人审。设计参考 Intercom teammate settings（人格 / 授权分层）、Gorgias automation rule（规则 + guardrail）、Linear settings（高密度表单 + 分段）。前端与后端分支 `ai-wechat-employee feat/game-boost-auto-reply` 兼容式对接：后端命令未部署时优雅 fallback，不影响现有页面、不假装成功。
+
+### 员工详情新增两区（在 `EmployeeDetail` 内，权限策略之后）
+
+- **人格配置区**：显示名 / 客服名、业务域（如游戏代练客服）、岗位（售前 / 售中 / 售后）、语气（专业 / 快速 / 像真人 / 不油腻，多选）、目标（引导收集游戏 / 区服 / 段位 / 预算 / 时限）、禁止承诺 / 红线（100% 不封号、违规外挂、诱导敏感密码等）。后端安全 payload 仍只给人格指纹（name hash/suffix + 职责长度/hash），故 UI 明示「当前后端未开放明文编辑快照」，但表单可基于模板填充并提交到新 API。
+- **自动回复策略区**：授权分三档 `disabled` / `suggest_only` / `auto_send_test`（开关 + 模式 radio 组合）；生效范围（仅当前实例 / 已绑定实例 / 白名单会话，白名单为 UI 占位）；频率限制（每客户每 N 秒最多 M 条）；强制人审触发（退款 / 封号 / 付款 / 外挂 / 链接 / 大额订单 / 投诉，命中即转人工确认）。
+
+### 一键「游戏代练客服模板」
+
+`应用游戏代练客服模板` 先本地填充人格（代练客服小助手 / 游戏代练客服 / 售前 / 四种语气 / 收集需求目标 / 代练红线）与安全默认策略（`suggest_only`、仅当前实例、60s/1 条限频、全部 guardrail 开启——**安全优先，默认不自动外发**），再尝试下发到后端；后端未就绪时仍保留本地草稿并明确提示。
+
+### 自动回复安全文案（强风险提示）
+
+选中 `auto_send_test` 时强制展示红色风险条：仅测试实例 / 白名单会话 / 低风险咨询自动发送；付款 / 退款 / 封号 / 外挂 / 链接 / 大额订单 / 投诉命中人审触发词转人工；所有动作写 audit；真实发送由后端二次 gating，前端不直接触发微信动作；后端未就绪时不假装开启成功。
+
+### API / proxy
+
+前端 `api.ts` 新增 `applyAiEmployeeTemplate` / `saveAiEmployeePolicy` / `runAiEmployeeAutoReplyTest`；后端 `ai-employee.ts` + `index.ts` 新增只读+写代理 endpoint（管理员限定）：
+
+```text
+POST /api/ai-employees/:employeeId/apply-template
+POST /api/ai-employees/:employeeId/policy
+POST /api/ai-employees/:employeeId/auto-reply-test
+```
+
+代理通过 `execFile`（无 shell、带超时）调 ai-wechat CLI 子命令 `apply-template` / `set-policy` / `auto-reply-test`。入参只接受人格模板文本 + policy/guardrail allowlist 键并做长度收敛；出参只回 hash / suffix / keys / status / decision / risk 等安全字段。CLI 未部署 / 命令不存在 / 子进程失败一律返回结构化 fallback（HTTP 200）：
+
+```json
+{ "ok": false, "mode": "unavailable", "reason": "backend_command_missing" }
+```
+
+前端据此 inline 提示（保存失败 / 后端待部署），绝不 500、绝不假成功。演示模式（无真实 employee_id）下写按钮 disabled 并提示接入后可用。
+
+### 安全展示约束（PR5）
+
+沿用 PR2~PR4 约束：只渲染 hash / suffix / count / status / keys / decision / risk / 脱敏摘要；禁止聊天正文、回复正文、token、绑定串明文、原始职责。新增可编辑对象仅限「用户正在编辑的人格模板文本 + policy / guardrail allowlist 键」；试运行示例文本为用户自填测试输入，不取任何客户聊天正文；后端下发的策略快照只回 hash / keys / status，不回明文。
+
 ## 安全边界
 
 - 不新增租户/子账号/实例授权模型，继续复用 WOC `useAuth()` / `useInstances()` / 后端可见实例过滤。

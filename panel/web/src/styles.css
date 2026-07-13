@@ -3982,6 +3982,266 @@ button {
   padding: 3px 9px;
 }
 
+/* ===== PR5：可编辑人格 + 自动回复策略 ===== */
+.ai-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.ai-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ai-form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.ai-form-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.ai-form-textarea {
+  min-height: 76px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* 选择 / 多选 pills（岗位 / 语气 / 范围 / 人审触发） */
+.ai-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-choice {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--trough);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-choice:hover {
+  border-color: rgba(var(--ai-accent-rgb) / 0.4);
+}
+.ai-choice.on {
+  color: #fff;
+  background: var(--ai-accent);
+  border-color: var(--ai-accent);
+}
+.ai-guard.on {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 开关 */
+.ai-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ai-switch {
+  flex: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--trough);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.18s;
+}
+.ai-switch.on {
+  background: var(--ai-accent);
+}
+.ai-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s;
+}
+.ai-switch.on .ai-switch-knob {
+  transform: translateX(20px);
+}
+.ai-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-toggle-text b {
+  font-size: 13.5px;
+}
+.ai-toggle-text span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 模式 radio 卡 */
+.ai-radio-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+.ai-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  background: var(--trough);
+  border: 1.5px solid transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-radio.on {
+  border-color: var(--ai-accent);
+  background: rgba(var(--ai-accent-rgb) / 0.08);
+}
+.ai-radio-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  transition: all 0.15s;
+}
+.ai-radio.on .ai-radio-dot {
+  border-color: var(--ai-accent);
+  background: radial-gradient(circle, var(--ai-accent) 0 4px, transparent 5px);
+}
+.ai-radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ai-radio-body b {
+  font-size: 13px;
+}
+.ai-radio-body span {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* 模式徽标 */
+.ai-mode-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 3px 10px;
+  margin-left: auto;
+}
+.ai-mode-disabled {
+  color: var(--muted);
+  background: var(--trough);
+}
+.ai-mode-suggest_only {
+  color: #9a6400;
+  background: rgba(245, 166, 35, 0.16);
+}
+.ai-mode-auto_send_test {
+  color: var(--danger);
+  background: rgba(var(--danger-rgb) / 0.14);
+}
+
+/* 高风险提示条 */
+.ai-risk-banner {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(var(--danger-rgb) / 0.4);
+  background: rgba(var(--danger-rgb) / 0.08);
+}
+.ai-risk-ic {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.ai-risk-banner b {
+  font-size: 13.5px;
+  color: var(--danger);
+}
+.ai-risk-banner ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ai-risk-banner li {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* 安全说明 */
+.ai-safety {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--trough);
+}
+.ai-safety b {
+  font-size: 12.5px;
+  color: var(--text);
+}
+.ai-safety ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-safety li {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* 试运行结果 */
+.ai-test-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--trough);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ai-test-result > div {
+  flex-basis: 100%;
+  font-weight: 400;
+}
+
+/* 成功提示条 */
+.ai-ok {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--wx-green-dark);
+  background: rgba(var(--green-rgb) / 0.12);
+  border-radius: var(--r-small);
+  padding: 10px 12px;
+}
+
 /* 详情内网格（负责微信 / 负责客户） */
 .ai-wxgrid,
 .ai-custgrid {
