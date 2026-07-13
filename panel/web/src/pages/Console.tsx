@@ -397,14 +397,14 @@ export default function Console({ onOpenMenu, onChangePassword }: { onOpenMenu: 
                     <button className="con-quick-btn" onClick={() => nav('/ai-employees?tab=bind')}>
                       <span className="con-quick-ic">📲</span>绑定秘书
                     </button>
-                    <button className="con-quick-btn" onClick={() => nav('/ai-employees?tab=knowledge')}>
+                    <button className="con-quick-btn" onClick={() => nav('/knowledge')}>
                       <span className="con-quick-ic">📚</span>导入知识库
                     </button>
-                    <button className="con-quick-btn" onClick={() => nav('/monitor')}>
-                      <span className="con-quick-ic">🖥️</span>监控墙
+                    <button className="con-quick-btn" onClick={() => nav('/tools')}>
+                      <span className="con-quick-ic">🧩</span>工具与工作流
                     </button>
-                    <button className="con-quick-btn" onClick={() => nav('/ai-employees')}>
-                      <span className="con-quick-ic">🤖</span>AI 员工
+                    <button className="con-quick-btn" onClick={() => nav('/inbox')}>
+                      <span className="con-quick-ic">💬</span>对话
                     </button>
                   </div>
                 </PanelCard>

@@ -12,6 +12,11 @@ import MonitorWall from './pages/MonitorWall';
 import Console, { ConsoleIcon } from './pages/Console';
 import Customers from './pages/Customers';
 import Approvals from './pages/Approvals';
+import Inbox, { InboxIcon } from './pages/Inbox';
+import Knowledge, { KnowledgeIcon } from './pages/Knowledge';
+import Tools, { ToolsIcon } from './pages/Tools';
+import Team, { TeamIcon } from './pages/Team';
+import Settings from './pages/Settings';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -160,10 +165,15 @@ export default function AppShell() {
         <main className="workspace">
           <Routes>
             <Route path="/" element={<Console onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
+            <Route path="/inbox" element={<Inbox onOpenMenu={openMenu} />} />
             <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
             <Route path="/customers" element={<Customers onOpenMenu={openMenu} />} />
+            <Route path="/knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
+            <Route path="/tools" element={<Tools onOpenMenu={openMenu} />} />
             <Route path="/approvals" element={<Approvals onOpenMenu={openMenu} />} />
             <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
+            <Route path="/team" element={<Team onOpenMenu={openMenu} />} />
+            <Route path="/settings" element={<Settings onOpenMenu={openMenu} />} />
             <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -175,6 +185,42 @@ export default function AppShell() {
   );
 }
 
+// 产品导航（对齐设计稿 ROUTES 的 10 模块），分组呈现，像大厂 SaaS。
+// 「微信实例 / 管理」作为基础设施入口保留在下方，不替代产品导航。
+interface NavItem {
+  path: string;
+  label: string;
+  icon: JSX.Element;
+  title: string;
+}
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: '运营',
+    items: [
+      { path: '/', label: '总览', icon: ConsoleIcon, title: '总控台 / 总览' },
+      { path: '/inbox', label: '对话', icon: InboxIcon, title: '对话 Inbox（安全概览）' },
+      { path: '/customers', label: '客户', icon: Icon.customers, title: '客户画像 CRM' },
+      { path: '/approvals', label: '待确认', icon: Icon.pending, title: '待确认中心' },
+      { path: '/monitor', label: '监控', icon: Icon.monitor, title: '监控墙' },
+    ],
+  },
+  {
+    title: 'AI 能力',
+    items: [
+      { path: '/ai-employees', label: 'AI 员工', icon: AiEmployeeIcon, title: 'AI 员工中心' },
+      { path: '/knowledge', label: '知识库', icon: KnowledgeIcon, title: '知识库' },
+      { path: '/tools', label: '工具与工作流', icon: ToolsIcon, title: '工具与工作流' },
+    ],
+  },
+  {
+    title: '管理',
+    items: [
+      { path: '/team', label: '团队', icon: TeamIcon, title: '团队与权限' },
+      { path: '/settings', label: '系统设置', icon: Icon.gear, title: '系统设置' },
+    ],
+  },
+];
+
 function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggleCollapsed: () => void }) {
   const { user, logout } = useAuth();
   const { confirm } = useUI();
@@ -183,9 +229,7 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
   const loc = useLocation();
   const isAdmin = user?.role === 'admin';
   const go = (p: string) => nav(p);
-
-  // 客户画像 / 待确认已升级为独立产品路由（/customers、/approvals）；AI 员工中心内仍保留同名 tab。
-  const onAi = loc.pathname === '/ai-employees';
+  const isOn = (p: string) => (p === '/' ? loc.pathname === '/' : loc.pathname === p || loc.pathname.startsWith(p + '/'));
 
   return (
     <aside className="sidebar">
@@ -200,26 +244,17 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
       </div>
 
       <nav className="sb-nav">
-        <button className={'sb-item' + (loc.pathname === '/' ? ' on' : '')} onClick={() => go('/')} title="总控台">
-          <span className="sb-ic">{ConsoleIcon}</span>
-          {!collapsed && <span className="sb-label">总控台</span>}
-        </button>
-        <button className={'sb-item' + (onAi ? ' on' : '')} onClick={() => go('/ai-employees')} title="AI 员工">
-          <span className="sb-ic">{AiEmployeeIcon}</span>
-          {!collapsed && <span className="sb-label">AI 员工</span>}
-        </button>
-        <button className={'sb-item' + (loc.pathname === '/customers' ? ' on' : '')} onClick={() => go('/customers')} title="客户画像 CRM">
-          <span className="sb-ic">{Icon.customers}</span>
-          {!collapsed && <span className="sb-label">客户</span>}
-        </button>
-        <button className={'sb-item' + (loc.pathname === '/approvals' ? ' on' : '')} onClick={() => go('/approvals')} title="待确认中心">
-          <span className="sb-ic">{Icon.pending}</span>
-          {!collapsed && <span className="sb-label">待确认</span>}
-        </button>
-        <button className={'sb-item' + (loc.pathname === '/monitor' ? ' on' : '')} onClick={() => go('/monitor')} title="监控墙">
-          <span className="sb-ic">{Icon.monitor}</span>
-          {!collapsed && <span className="sb-label">监控墙</span>}
-        </button>
+        {NAV_GROUPS.map((g) => (
+          <div key={g.title} className="sb-group">
+            {!collapsed && <div className="sb-group-title">{g.title}</div>}
+            {g.items.map((it) => (
+              <button key={it.path} className={'sb-item' + (isOn(it.path) ? ' on' : '')} onClick={() => go(it.path)} title={it.title}>
+                <span className="sb-ic">{it.icon}</span>
+                {!collapsed && <span className="sb-label">{it.label}</span>}
+              </button>
+            ))}
+          </div>
+        ))}
       </nav>
 
       {!collapsed && <div className="sb-section">微信实例</div>}
@@ -242,14 +277,16 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
       </div>
 
       <div className="sb-footer">
-        <button
-          className={'sb-item' + (loc.pathname === '/admin' ? ' on' : '')}
-          onClick={() => go('/admin')}
-          title="系统设置"
-        >
-          <span className="sb-ic">{Icon.gear}</span>
-          {!collapsed && <span className="sb-label">系统设置</span>}
-        </button>
+        {isAdmin && (
+          <button
+            className={'sb-item' + (loc.pathname === '/admin' ? ' on' : '')}
+            onClick={() => go('/admin')}
+            title="实例与账号管理（基础设施）"
+          >
+            <span className="sb-ic">{Icon.gear}</span>
+            {!collapsed && <span className="sb-label">实例·账号管理</span>}
+          </button>
+        )}
         <button
           className="sb-item"
           title="退出"

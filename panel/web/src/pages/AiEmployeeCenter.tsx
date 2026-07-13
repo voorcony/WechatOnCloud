@@ -601,14 +601,16 @@ function buildDemoVM(instances: InstanceWithStatus[]): CenterVM {
 }
 
 // ==================== Tab 结构 ====================
-type Seg = 'overview' | 'customers' | 'knowledge' | 'pending' | 'bind' | 'runs';
+type Seg = 'overview' | 'customers' | 'knowledge' | 'tools' | 'pending' | 'bind' | 'runs' | 'settings';
 const SEGMENTS: { key: Seg; label: string }[] = [
   { key: 'overview', label: '员工总览' },
   { key: 'customers', label: '客户画像' },
   { key: 'knowledge', label: '知识库' },
+  { key: 'tools', label: '工具与工作流' },
   { key: 'pending', label: '待确认' },
   { key: 'bind', label: '绑定秘书' },
   { key: 'runs', label: '运行记录' },
+  { key: 'settings', label: '运营设置' },
 ];
 
 export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => void }) {
@@ -754,9 +756,11 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             )}
             {seg === 'customers' && <CustomerBoard customers={vm.customers} demo={!real} />}
             {seg === 'knowledge' && <KnowledgePanel real={real} knowledge={vm.knowledge} onImported={loadConsole} />}
+            {seg === 'tools' && <ToolsPanel vm={vm} demo={!real} />}
             {seg === 'pending' && <PendingBoard pending={vm.pending} demo={!real} />}
             {seg === 'bind' && <BindPanel real={real} />}
             {seg === 'runs' && <RunLog runs={vm.runs} demo={!real} />}
+            {seg === 'settings' && <SettingsPanel resp={resp} real={!!real} vm={vm} instanceCount={instances.length} isAdmin={isAdmin} />}
           </div>
         )}
       </div>
@@ -1607,6 +1611,237 @@ function RunLog({ runs, demo }: { runs: RunVM[]; demo: boolean }) {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+// ==================== 工具与工作流 ====================
+// 吸收设计稿「工具库 + 工作流画布」信息架构，但全部由 WOC 安全字段派生：
+//   - 工具库 = AI 员工能力 allowlist 键（与权限 / 审批策略键一致），启用态由可见员工的
+//     permission/memory/approval keys 派生；「配置」为占位（后端写路径接入后启用）。
+//   - 工作流 = 消息接入 → 意图路由 → 检索知识库 → 起草回复 → 行为边界检查 → 待确认 / 自动发送，
+//     各节点计数来自安全的 knowledge/guardrail/pending，不含任何聊天正文 / 回复原文 / token。
+type ToolRisk = 'low' | 'medium' | 'high';
+interface ToolDef {
+  key: string;
+  label: string;
+  desc: string;
+  risk: ToolRisk;
+}
+const TOOL_DEFS: ToolDef[] = [
+  { key: 'knowledge_read', label: '检索知识库', desc: '按客户问题检索已切片的商品 / 售后 / 话术知识，作为回复依据。', risk: 'low' },
+  { key: 'reply', label: '起草回复', desc: '为客户消息生成回复草稿，正文脱敏进入待确认队列。', risk: 'low' },
+  { key: 'memory_write', label: '写入记忆', desc: '把客户偏好 / 关键事实沉淀为长期记忆，供后续跟进复用。', risk: 'low' },
+  { key: 'profile_update', label: '更新画像', desc: '刷新客户阶段 / 意向 / 风险标签，只写安全字段。', risk: 'low' },
+  { key: 'contact_remark', label: '修改备注', desc: '按画像更新联系人备注标签，需人工确认后执行。', risk: 'medium' },
+  { key: 'auto_reply', label: '自动回复', desc: '对低风险咨询自动发送，命中人审触发词转人工。', risk: 'medium' },
+  { key: 'send_message', label: '主动发送', desc: '向客户主动外发消息 / 卡片 / 文件，属敏感外发动作。', risk: 'high' },
+  { key: 'group_operation', label: '群操作', desc: '群公告 / 成员变更等影响面大的操作，需人工确认。', risk: 'high' },
+];
+const TOOL_RISK_LABEL: Record<ToolRisk, string> = { low: '低风险', medium: '需确认', high: '高风险' };
+const toolRiskCls = (r: ToolRisk): string => (r === 'high' ? 'st-off' : r === 'medium' ? 'st-warn' : 'st-on');
+
+function ToolsPanel({ vm, demo }: { vm: CenterVM; demo: boolean }) {
+  // 可见员工授予过的能力键集合（权限 / 记忆 / 审批），据此判断工具是否已在某个员工上启用。
+  const enabledKeys = new Set<string>();
+  const approvalKeys = new Set<string>();
+  for (const e of vm.employees) {
+    e.permKeys.forEach((k) => enabledKeys.add(k));
+    e.memoryKeys.forEach((k) => enabledKeys.add(k));
+    e.approvalKeys.forEach((k) => approvalKeys.add(k));
+  }
+  const activeCount = TOOL_DEFS.filter((t) => enabledKeys.has(t.key)).length;
+
+  // 工作流节点计数（安全派生）。
+  const kbDocs = vm.knowledge.docCount;
+  const guardCount = GUARDRAILS.length;
+  const pendingTotal = vm.pending.total;
+  const steps: { key: string; kind: string; title: string; detail: string }[] = [
+    { key: 'ingest', kind: 'trigger', title: '接入客户消息', detail: 'OCR / 消息入库 · wechat.message.created' },
+    { key: 'route', kind: 'llm', title: '意图识别与路由', detail: '识别意图 → 分配到售前 / 售后 / 复购 / 群运营岗位' },
+    { key: 'kb', kind: 'tool', title: '检索知识库', detail: `knowledge_read · ${kbDocs} 文档命中作为回复依据` },
+    { key: 'draft', kind: 'llm', title: '起草回复', detail: '按人格与知识库生成回复草稿（正文脱敏）' },
+    { key: 'boundary', kind: 'cond', title: '行为边界检查', detail: `命中 ${guardCount} 类人审触发词 → 强制转人工确认` },
+    { key: 'approve', kind: 'approve', title: '待确认 / 自动发送', detail: pendingTotal ? `${pendingTotal} 个动作待人工确认后落地` : '敏感动作进待确认队列，人工确认后执行' },
+  ];
+
+  return (
+    <>
+      <div className="ai-note">
+        工具库与工作流展示 AI 员工在授权微信实例内可调用的能力与处理链路。全部由安全字段派生（能力键 / 计数），
+        不含聊天正文 / 回复原文 / token。「配置」为占位，后端写路径接入后启用。
+        {demo && ' 当前为演示数据。'}
+      </div>
+
+      <div className="ai-sec" style={{ marginTop: 12 }}>
+        <div className="ai-sec-title">
+          工具库
+          <span className="ai-sec-count">{activeCount} / {TOOL_DEFS.length} 已在员工上启用</span>
+        </div>
+        <div className="ai-tool-grid">
+          {TOOL_DEFS.map((t) => {
+            const on = enabledKeys.has(t.key);
+            const needApproval = t.risk !== 'low' || approvalKeys.has(t.key);
+            return (
+              <div key={t.key} className={'ai-tool-card' + (on ? '' : ' ai-tool-off')}>
+                <div className="ai-tool-head">
+                  <span className="ai-mono ai-tool-name">wechat.{t.key}</span>
+                  <span className={'ai-tool-risk risk-' + t.risk}>{TOOL_RISK_LABEL[t.risk]}</span>
+                </div>
+                <p className="ai-tool-desc">{t.desc}</p>
+                <div className="ai-tool-foot">
+                  <span className="ai-tool-state">
+                    <span className={'ai-dot ' + (on ? 'st-on' : 'st-off')} />
+                    {on ? '已启用' : '未授权'}
+                    {needApproval && <span className="ai-tool-tag">需人工确认</span>}
+                  </span>
+                  <button className="btn-text" disabled title="工具配置写路径后端接入后启用">
+                    配置
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="ai-sec" style={{ marginTop: 12 }}>
+        <div className="ai-sec-title">
+          处理工作流
+          <span className="ai-sec-count">消息接入 → 路由 → 知识库 → 起草 → 边界 → 待确认</span>
+        </div>
+        <div className="ai-flow">
+          {steps.map((s, i) => (
+            <div key={s.key} className={'ai-flow-node ai-flow-' + s.kind}>
+              <div className="ai-flow-idx">{i + 1}</div>
+              <div className="ai-flow-body">
+                <div className="ai-flow-title">{s.title}</div>
+                <div className="ai-flow-detail">{s.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="ai-sec-meta">
+          工作流为运行链路的只读示意；真实发送 / 改备注 / 群操作由后端二次 gating，本页不触发任何真实微信动作。
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ==================== 运营设置 ====================
+// 吸收设计稿 settings 分组表单，但如实反映 WOC 现状：数据源状态 / 安全合规姿态 / 内置人审触发词
+// 为真实只读信息；模型路由 / 预算 / Webhook 等无后端能力的项统一 disabled 占位并标注「后端接入后启用」，
+// 绝不假装已生效。实例管理仍走 /admin，不在此新造账号 / 授权。
+function SettingsPanel({
+  resp,
+  real,
+  vm,
+  instanceCount,
+  isAdmin,
+}: {
+  resp: AiEmployeeConsoleResponse | null;
+  real: boolean;
+  vm: CenterVM;
+  instanceCount: number;
+  isAdmin: boolean;
+}) {
+  const nav = useNavigate();
+  const demoReason =
+    resp && resp.mode === 'demo_fallback'
+      ? resp.reason === 'cannot_enforce_instance_filter'
+        ? '无法按实例过滤，已对子账号回退'
+        : resp.reason === 'unavailable'
+          ? '数据源子进程不可用，已回退'
+          : '尚未配置数据源'
+      : '';
+  return (
+    <>
+      <div className="ai-note">
+        运营设置展示 AI 员工数据源与安全策略现状。实例 / 账号 / 授权仍在
+        <button className="btn-text" style={{ padding: '0 4px' }} onClick={() => nav('/admin')}>系统设置</button>
+        管理，本页不新造租户或授权。
+      </div>
+
+      <div className="ai-fieldgrid" style={{ marginTop: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+        {/* 数据源与运行 */}
+        <div className="ai-sec">
+          <div className="ai-sec-title">数据源与运行</div>
+          <div className="ai-set-row">
+            <span className="ai-set-k">接入状态</span>
+            <span className="ai-set-v">
+              <span className={'ai-dot ' + (real ? 'st-on' : 'st-warn')} />
+              {real ? '已接入真实数据（只读代理）' : '演示回退'}
+            </span>
+          </div>
+          <div className="ai-set-row">
+            <span className="ai-set-k">数据来源</span>
+            <span className="ai-set-v ai-mono">ai-wechat-employee · management_api_v1</span>
+          </div>
+          <div className="ai-set-row">
+            <span className="ai-set-k">可见实例</span>
+            <span className="ai-set-v">{instanceCount} 个（AI 员工可操作范围）</span>
+          </div>
+          <div className="ai-set-row">
+            <span className="ai-set-k">在岗员工</span>
+            <span className="ai-set-v">{vm.employees.filter((e) => e.statusKind === 'on').length} / {vm.employees.length}</span>
+          </div>
+          {!real && demoReason && <div className="ai-set-hint">当前：{demoReason}。字段 allowlist 与按实例过滤在数据源就绪后自动启用。</div>}
+        </div>
+
+        {/* 安全与合规 */}
+        <div className="ai-sec">
+          <div className="ai-sec-title">安全与合规</div>
+          <ul className="ai-set-list">
+            <li><b>只读代理 + 字段 allowlist：</b>后台只展示 hash / suffix / 计数 / 状态 / 脱敏摘要。</li>
+            <li><b>按可见实例过滤（RBAC）：</b>子账号只看被授权实例，管理员看全部。</li>
+            <li><b>高风险动作人工确认：</b>发送 / 改备注 / 群操作进待确认队列，人工确认后才落地。</li>
+            <li><b>不外泄敏感原文：</b>不展示聊天正文 / 回复原文 / token / 绑定串明文（二维码除外）。</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* 内置人审触发词（只读 allowlist） */}
+      <div className="ai-sec" style={{ marginTop: 12 }}>
+        <div className="ai-sec-title">
+          内置强制人审触发词
+          <span className="ai-sec-count">命中即转人工确认 · 可在员工「自动回复策略」中按需调整</span>
+        </div>
+        <div className="ai-choice-row">
+          {GUARDRAILS.map((g) => (
+            <span key={g.key} className="ai-choice ai-guard on" style={{ cursor: 'default' }}>{g.label}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* 高级设置：无后端能力，占位不假成功 */}
+      <div className="ai-sec" style={{ marginTop: 12 }}>
+        <div className="ai-sec-title">
+          高级设置
+          <span className="ai-sec-count">后端接入后启用 · 当前仅展示占位，不影响真实运行</span>
+        </div>
+        <div className="ai-form-grid">
+          <label className="ai-form-field">
+            <span className="ai-form-label">主模型路由</span>
+            <select className="input" disabled defaultValue="">
+              <option value="">后端接入后配置</option>
+            </select>
+          </label>
+          <label className="ai-form-field">
+            <span className="ai-form-label">每月预算</span>
+            <input className="input" disabled placeholder="后端接入后配置" />
+          </label>
+        </div>
+        <label className="ai-form-field" style={{ marginTop: 12 }}>
+          <span className="ai-form-label">Webhook 推送地址</span>
+          <input className="input ai-mono" disabled placeholder="后端接入后配置（https://your.domain/hook）" />
+        </label>
+        <div className="ai-set-hint">
+          {isAdmin
+            ? '这些能力依赖 ai-wechat-employee 的写路径，尚未部署；接入后此处将可保存并下发，届时不再是占位。'
+            : '模型路由 / 预算 / Webhook 为管理员配置项，且需后端写路径接入后启用。'}
+        </div>
+      </div>
     </>
   );
 }
