@@ -287,6 +287,75 @@ export interface AiAutoReplyTestResult {
   matched_guardrails: string[];
   redacted_summary: string;
 }
+
+export interface AiApprovalReplyJobCard {
+  reply_job_id: number;
+  status: string;
+  needs_human: boolean;
+  should_send: boolean;
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  woc_instance_id: string | null;
+  conversation_key_hash: string;
+  incoming_message_id: number | null;
+  reply_text_hash: string;
+  reply_text_len: number;
+  retrieved_chunk_count: number;
+  memory_count: number;
+  reason_hash: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AiApprovalSendActionCard {
+  send_action_id: number;
+  reply_job_id: number | null;
+  mode: string;
+  status: string;
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  woc_instance_id: string | null;
+  conversation_key_hash: string;
+  reply_text_hash: string;
+  has_plan: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AiApprovalEmployeeTaskCard {
+  task_id: number;
+  employee_id: number | null;
+  task_type: string;
+  status: string;
+  instance_id_hash: string | null;
+  instance_id_suffix: string | null;
+  woc_instance_id: string | null;
+  input_hash: string | null;
+  input_redacted: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface AiApprovalQueuePayload {
+  found: boolean;
+  summary: Record<string, number>;
+  reply_job_cards: AiApprovalReplyJobCard[];
+  send_action_cards: AiApprovalSendActionCard[];
+  employee_task_cards: AiApprovalEmployeeTaskCard[];
+}
+export type AiEmployeeApprovalQueueResponse =
+  | {
+      enabled: false;
+      mode: 'demo_fallback';
+      reason: 'not_configured' | 'unavailable';
+      visibleInstanceIds: string[];
+      queue: null;
+    }
+  | {
+      enabled: true;
+      mode: 'real';
+      source: 'ai-wechat-employee';
+      visibleInstanceCount: number;
+      queue: AiApprovalQueuePayload;
+    };
+
 // 前端提交的人格 / 自动回复策略草稿（模板文本 + allowlist 键），绝不含聊天正文 / token。
 export interface AiPersonaDraft {
   displayName: string;
@@ -363,6 +432,7 @@ export const api = {
 
   // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
+  aiEmployeeApprovalQueue: () => req<AiEmployeeApprovalQueueResponse>('/api/ai-employees/approval-queue'),
   createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
   importAiEmployeeKnowledge: (title: string, markdown: string) =>
     req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {

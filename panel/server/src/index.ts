@@ -101,6 +101,7 @@ import {
 import { createSession, getSession, destroySession, destroyUserSessions, SESSION_TTL_MS } from './sessions.js';
 import {
   buildConsoleResponse,
+  buildApprovalQueueResponse,
   createAiEmployeeBindPayload,
   importAiEmployeeKnowledge,
   applyAiEmployeeTemplate,
@@ -425,6 +426,14 @@ app.get('/api/ai-employees/console', async (req, reply) => {
   if (!u) return;
   const visibleIds = userInstances(u).map((i) => i.id);
   return buildConsoleResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] console ${code}`));
+});
+
+
+app.get('/api/ai-employees/approval-queue', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  const visibleIds = userInstances(u).map((i) => i.id);
+  return buildApprovalQueueResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] approval-queue ${code}`));
 });
 
 app.post('/api/ai-employees/bind', async (req, reply) => {

@@ -74,6 +74,7 @@ export function computeTextHash(text: string): string {
 // 只读、无 shell、带超时；成功返回解析后的 payload，失败一律抛 coded Error（上层转 fallback）。
 type CliSubcommand =
   | 'console'
+  | 'approval-queue'
   | 'create-bind'
   | 'import-kb-dir'
   | 'apply-template'
@@ -261,6 +262,75 @@ export interface ConsolePayload {
   send_status_summary: SafeSummary | null;
   customer_status_summary: SafeSummary | null;
 }
+
+
+export interface ApprovalReplyJobCard {
+  reply_job_id: number;
+  status: string;
+  needs_human: boolean;
+  should_send: boolean;
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  woc_instance_id: string | null;
+  conversation_key_hash: string;
+  incoming_message_id: number | null;
+  reply_text_hash: string;
+  reply_text_len: number;
+  retrieved_chunk_count: number;
+  memory_count: number;
+  reason_hash: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface ApprovalSendActionCard {
+  send_action_id: number;
+  reply_job_id: number | null;
+  mode: string;
+  status: string;
+  instance_id_hash: string;
+  instance_id_suffix: string;
+  woc_instance_id: string | null;
+  conversation_key_hash: string;
+  reply_text_hash: string;
+  has_plan: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface ApprovalEmployeeTaskCard {
+  task_id: number;
+  employee_id: number | null;
+  task_type: string;
+  status: string;
+  instance_id_hash: string | null;
+  instance_id_suffix: string | null;
+  woc_instance_id: string | null;
+  input_hash: string | null;
+  input_redacted: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface ApprovalQueuePayload {
+  found: boolean;
+  summary: Record<string, number>;
+  reply_job_cards: ApprovalReplyJobCard[];
+  send_action_cards: ApprovalSendActionCard[];
+  employee_task_cards: ApprovalEmployeeTaskCard[];
+}
+export type AiEmployeeApprovalQueueResponse =
+  | {
+      enabled: false;
+      mode: 'demo_fallback';
+      reason: 'not_configured' | 'unavailable';
+      visibleInstanceIds: string[];
+      queue: null;
+    }
+  | {
+      enabled: true;
+      mode: 'real';
+      source: 'ai-wechat-employee';
+      visibleInstanceCount: number;
+      queue: ApprovalQueuePayload;
+    };
 
 export type AiEmployeeConsoleResponse =
   | {
@@ -514,6 +584,79 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
   };
 }
 
+
+function pickApprovalReplyJob(v: any, wocId: (h: unknown) => string | null): ApprovalReplyJobCard {
+  return {
+    reply_job_id: num(v?.reply_job_id) ?? 0,
+    status: str(v?.status) ?? '',
+    needs_human: !!v?.needs_human,
+    should_send: !!v?.should_send,
+    instance_id_hash: str(v?.instance_id_hash) ?? '',
+    instance_id_suffix: str(v?.instance_id_suffix) ?? '',
+    woc_instance_id: wocId(v?.instance_id_hash),
+    conversation_key_hash: str(v?.conversation_key_hash) ?? '',
+    incoming_message_id: num(v?.incoming_message_id),
+    reply_text_hash: str(v?.reply_text_hash) ?? '',
+    reply_text_len: num(v?.reply_text_len) ?? 0,
+    retrieved_chunk_count: num(v?.retrieved_chunk_count) ?? 0,
+    memory_count: num(v?.memory_count) ?? 0,
+    reason_hash: str(v?.reason_hash),
+    created_at: str(v?.created_at),
+    updated_at: str(v?.updated_at),
+  };
+}
+function pickApprovalSendAction(v: any, wocId: (h: unknown) => string | null): ApprovalSendActionCard {
+  return {
+    send_action_id: num(v?.send_action_id) ?? 0,
+    reply_job_id: num(v?.reply_job_id),
+    mode: str(v?.mode) ?? '',
+    status: str(v?.status) ?? '',
+    instance_id_hash: str(v?.instance_id_hash) ?? '',
+    instance_id_suffix: str(v?.instance_id_suffix) ?? '',
+    woc_instance_id: wocId(v?.instance_id_hash),
+    conversation_key_hash: str(v?.conversation_key_hash) ?? '',
+    reply_text_hash: str(v?.reply_text_hash) ?? '',
+    has_plan: !!v?.has_plan,
+    created_at: str(v?.created_at),
+    updated_at: str(v?.updated_at),
+  };
+}
+function pickApprovalEmployeeTask(v: any, wocId: (h: unknown) => string | null): ApprovalEmployeeTaskCard {
+  return {
+    task_id: num(v?.task_id) ?? 0,
+    employee_id: num(v?.employee_id),
+    task_type: str(v?.task_type) ?? '',
+    status: str(v?.status) ?? '',
+    instance_id_hash: str(v?.instance_id_hash),
+    instance_id_suffix: str(v?.instance_id_suffix),
+    woc_instance_id: wocId(v?.instance_id_hash),
+    input_hash: str(v?.input_hash),
+    input_redacted: str(v?.input_redacted),
+    created_at: str(v?.created_at),
+    updated_at: str(v?.updated_at),
+  };
+}
+function filterApprovalQueue(raw: any, hashToId: Map<string, string>, includeUnknownInstances: boolean): ApprovalQueuePayload {
+  const visible = (h: unknown): boolean => includeUnknownInstances || (typeof h === 'string' && hashToId.has(h));
+  const wocId = (h: unknown): string | null => (typeof h === 'string' ? hashToId.get(h) ?? null : null);
+  const replyJobCards = (Array.isArray(raw?.reply_job_cards) ? raw.reply_job_cards : [])
+    .filter((c: any) => visible(c?.instance_id_hash))
+    .map((c: any) => pickApprovalReplyJob(c, wocId));
+  const sendActionCards = (Array.isArray(raw?.send_action_cards) ? raw.send_action_cards : [])
+    .filter((c: any) => visible(c?.instance_id_hash))
+    .map((c: any) => pickApprovalSendAction(c, wocId));
+  const employeeTaskCards = (Array.isArray(raw?.employee_task_cards) ? raw.employee_task_cards : [])
+    .filter((c: any) => c?.instance_id_hash == null || visible(c?.instance_id_hash))
+    .map((c: any) => pickApprovalEmployeeTask(c, wocId));
+  return {
+    found: raw?.found !== false,
+    summary: raw?.summary && typeof raw.summary === 'object' ? pickCounts(raw.summary) : {},
+    reply_job_cards: replyJobCards,
+    send_action_cards: sendActionCards,
+    employee_task_cards: employeeTaskCards,
+  };
+}
+
 // ---------- 主入口：给路由用 ----------
 // 传入当前用户 + 其可见实例 id 列表。永不抛错——任何异常都收敛为 demo_fallback。
 export async function buildConsoleResponse(
@@ -566,6 +709,43 @@ export async function buildConsoleResponse(
   };
 }
 
+
+
+export async function buildApprovalQueueResponse(
+  user: Pick<User, 'role'>,
+  visibleInstanceIds: string[],
+  log?: (code: string) => void,
+): Promise<AiEmployeeApprovalQueueResponse> {
+  const cfg = aiEmployeeConfig();
+  const fallback = (reason: 'not_configured' | 'unavailable'): AiEmployeeApprovalQueueResponse => ({
+    enabled: false,
+    mode: 'demo_fallback',
+    reason,
+    visibleInstanceIds,
+    queue: null,
+  });
+  if (!isConfigured(cfg)) return fallback('not_configured');
+  let raw: any;
+  try {
+    raw = await runCli(cfg, 'approval-queue');
+  } catch (e) {
+    log?.((e as Error).message || 'cli_error');
+    return fallback('unavailable');
+  }
+  if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'approval_queue') {
+    log?.('schema_mismatch');
+    return fallback('unavailable');
+  }
+  const hashToId = new Map<string, string>();
+  for (const id of visibleInstanceIds) hashToId.set(computeTextHash(id), id);
+  return {
+    enabled: true,
+    mode: 'real',
+    source: 'ai-wechat-employee',
+    visibleInstanceCount: visibleInstanceIds.length,
+    queue: filterApprovalQueue(raw, hashToId, user.role === 'admin'),
+  };
+}
 
 function safeKbFilename(title: string): string {
   const base = (title || 'knowledge').trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '');
