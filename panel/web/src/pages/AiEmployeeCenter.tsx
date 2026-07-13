@@ -14,6 +14,7 @@ import {
   type AiCustomerCard,
   type AiRunCard,
   type AiKnowledgeSummary,
+  type AiSafeSummary,
   type AiBindPayloadResponse,
   type AiKnowledgeImportResponse,
   type AiPersonaDraft,
@@ -286,12 +287,19 @@ interface EmployeeVM {
   totalRuns: number;
   tasksWaiting: number;
 }
+interface OpsHealthVM {
+  rows: { key: string; label: string; value: number; tone: 'ok' | 'warn' | 'danger' | '' }[];
+  serviceText: string;
+  visionText: string;
+  customerText: string;
+}
 interface CenterVM {
   employees: EmployeeVM[];
   customers: CustomerVM[];
   runs: RunVM[];
   knowledge: KnowledgeVM;
   pending: PendingVM;
+  health: OpsHealthVM;
 }
 
 const statusKindOf = (raw: string): 'on' | 'warn' | 'off' =>
@@ -404,6 +412,38 @@ function buildRealVM(c: AiConsolePayload, wocById: Map<string, InstanceWithStatu
       .map(runVM),
     knowledge,
     pending,
+    health: healthFromReal(c),
+  };
+}
+
+function safeMetric(s: AiSafeSummary | null | undefined, key: string): number {
+  const v = s?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+function safeText(s: AiSafeSummary | null | undefined, key: string, fallback: string): string {
+  const v = s?.[key];
+  return typeof v === 'string' && v ? v : fallback;
+}
+function healthFromReal(c: AiConsolePayload): OpsHealthVM {
+  const approval = c.approval_status_summary;
+  const send = c.send_status_summary;
+  const service = c.service_status_summary;
+  const vision = c.vision_status_summary;
+  const customer = c.customer_status_summary;
+  const pendingReply = safeMetric(approval, 'pending_reply_jobs');
+  const plannedSend = safeMetric(send, 'planned_count');
+  const failedSend = safeMetric(send, 'failed_count');
+  const riskCustomers = safeMetric(customer, 'high_intent_count') + safeMetric(customer, 'risk_flag_count');
+  return {
+    rows: [
+      { key: 'reply', label: '待人审回复', value: pendingReply, tone: pendingReply ? 'warn' : 'ok' },
+      { key: 'send', label: '计划发送', value: plannedSend, tone: plannedSend ? 'warn' : 'ok' },
+      { key: 'failed', label: '发送失败', value: failedSend, tone: failedSend ? 'danger' : 'ok' },
+      { key: 'risk', label: '高意向/风险客户', value: riskCustomers, tone: riskCustomers ? 'warn' : '' },
+    ],
+    serviceText: `在线 ${safeMetric(service, 'online_count')} / 异常 ${safeMetric(service, 'degraded_count')}`,
+    visionText: safeText(vision, 'source', 'none') === 'none' ? '视觉未上报' : '视觉已上报',
+    customerText: `客户 ${safeMetric(customer, 'customer_count')} · 画像 ${safeMetric(customer, 'active_memory_count')}`,
   };
 }
 
@@ -591,7 +631,21 @@ function buildDemoVM(instances: InstanceWithStatus[]): CenterVM {
       })),
   };
 
-  return { employees, customers: allCustomers, runs: allRuns, knowledge, pending };
+  return { employees, customers: allCustomers, runs: allRuns, knowledge, pending, health: demoHealth(instances.length, waitingTotal) };
+}
+
+function demoHealth(instanceCount: number, waitingTotal: number): OpsHealthVM {
+  return {
+    rows: [
+      { key: 'reply', label: '待人审回复', value: waitingTotal, tone: waitingTotal ? 'warn' : 'ok' },
+      { key: 'send', label: '计划发送', value: instanceCount ? seedOf('send' + instanceCount) % 2 : 0, tone: 'warn' },
+      { key: 'failed', label: '发送失败', value: 0, tone: 'ok' },
+      { key: 'risk', label: '高意向/风险客户', value: Math.max(0, instanceCount - 1), tone: instanceCount > 1 ? 'warn' : '' },
+    ],
+    serviceText: `在线 ${instanceCount} / 异常 0`,
+    visionText: '视觉演示模式',
+    customerText: '客户画像演示',
+  };
 }
 
 // ==================== Tab 结构 ====================
@@ -704,6 +758,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
         ))}
       </div>
 
+      <OperationsHealthCard health={vm.health} demo={!real} />
+
       <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
         {SEGMENTS.map((s) => (
           <button
@@ -739,6 +795,35 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
           {seg === 'settings' && <SettingsPanel resp={resp} real={!!real} vm={vm} instanceCount={instances.length} isAdmin={isAdmin} />}
         </div>
       )}
+    </div>
+  );
+}
+
+
+function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boolean }) {
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-h">
+        <span className="title">运营健康</span>
+        <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>
+          {demo ? '演示口径' : '真实安全摘要'} · 只显示计数 / 状态 / hash
+        </span>
+      </div>
+      <div className="card-b">
+        <div className="grid-4">
+          {health.rows.map((r) => (
+            <div key={r.key} className="mini-stat">
+              <span>{r.label}</span>
+              <b className={r.tone === 'danger' ? 'danger' : r.tone === 'warn' ? 'warn' : ''}>{r.value}</b>
+            </div>
+          ))}
+        </div>
+        <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+          <span className="chip outline">服务：{health.serviceText}</span>
+          <span className="chip outline">视觉：{health.visionText}</span>
+          <span className="chip outline">客户：{health.customerText}</span>
+        </div>
+      </div>
     </div>
   );
 }

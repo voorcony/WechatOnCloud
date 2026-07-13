@@ -225,6 +225,7 @@ export interface BindChannel {
   created_at: string | null;
   updated_at: string | null;
 }
+export type SafeSummary = Record<string, number | string | boolean | null | Record<string, number>>;
 export interface ConsolePayload {
   found: boolean;
   dashboard: Record<string, number | string | number[]> | null;
@@ -241,6 +242,11 @@ export interface ConsolePayload {
     counts: Record<string, number>;
     channels: BindChannel[];
   } | null;
+  service_status_summary: SafeSummary | null;
+  vision_status_summary: SafeSummary | null;
+  approval_status_summary: SafeSummary | null;
+  send_status_summary: SafeSummary | null;
+  customer_status_summary: SafeSummary | null;
 }
 
 export type AiEmployeeConsoleResponse =
@@ -391,6 +397,21 @@ function pickKnowledge(v: any): KnowledgeSummary | null {
     })),
   };
 }
+
+function pickSafeSummary(v: unknown): SafeSummary | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const out: SafeSummary = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === 'number' && Number.isFinite(val)) out[k] = val;
+    else if (typeof val === 'string' || typeof val === 'boolean' || val === null) out[k] = val;
+    else if (val && typeof val === 'object' && !Array.isArray(val)) {
+      const counts = pickCounts(val);
+      if (Object.keys(counts).length > 0) out[k] = counts;
+    }
+  }
+  return out;
+}
+
 function pickChannel(v: any): BindChannel {
   return {
     channel_id: num(v?.channel_id) ?? 0,
@@ -458,6 +479,11 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
     customer_cards: customerCards,
     knowledge_summary: pickKnowledge(raw?.knowledge_summary),
     bind_panel: bindPanel,
+    service_status_summary: pickSafeSummary(raw?.service_status_summary),
+    vision_status_summary: pickSafeSummary(raw?.vision_status_summary),
+    approval_status_summary: pickSafeSummary(raw?.approval_status_summary),
+    send_status_summary: pickSafeSummary(raw?.send_status_summary),
+    customer_status_summary: pickSafeSummary(raw?.customer_status_summary),
   };
 }
 
