@@ -5,6 +5,7 @@ import { useUI } from '../ui';
 import { useAuth } from '../auth';
 import { useInstances } from '../AppShell';
 import { VncAudio } from '../vncAudio';
+import { useAiConsoleModel, getInstanceAiContext, stageLabel, RISK_LABEL, permKeyLabel } from './aiConsoleModel';
 
 // KasmVNC noVNC 页面；反代按实例隔离：/desktop/<id>/* → 对应容器，注入凭据。
 function desktopUrl(id: string) {
@@ -139,60 +140,131 @@ const MenuIcon = (
   </svg>
 );
 
-function seedOf(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+// 单实例 AI Context Rail：从共享只读模型（真实优先，失败 deterministic 回退）派生当前绑定 AI 员工、
+// 当前客户上下文、待确认动作、AI 判断（安全派生文案）、接管状态与运行时间线。全部只读 / 脱敏：
+// 绝不渲染聊天正文、回复原文、token；「接管」复用已有控制权 API，「恢复 AI」等无真实写 API 的动作 disabled。
+function AiWorkbench({
+  inst,
+  control,
+  onTakeControl,
+}: {
+  inst?: InstanceWithStatus;
+  control: { free: boolean; mine: boolean; holder: string | null } | null;
+  onTakeControl: () => void;
+}) {
+  const nav = useNavigate();
+  const m = useAiConsoleModel();
+  const ctx = inst ? getInstanceAiContext(m, inst) : null;
+  const emp = ctx?.employee ?? null;
+  const top = ctx?.topCustomer ?? null;
+  const risk = ctx?.risk ?? null;
 
-function aiRoleFor(inst?: InstanceWithStatus): string {
-  if (!inst) return '未绑定 AI 员工';
-  const roles = ['售前 AI', '售后 AI', '复购 AI', '群运营 AI'];
-  return roles[seedOf(inst.id) % roles.length];
-}
+  // 接管态：人工接管中 / 他人操作中 / AI 值守（空闲）。
+  const takeover: { text: string; cls: string; hint: string } = control?.mine
+    ? { text: '人工接管中', cls: 'st-warn', hint: '你正在操作该实例，AI 自动动作已让位。' }
+    : control && !control.free && !control.mine
+      ? { text: `「${control.holder}」操作中`, cls: 'st-busy', hint: '其他成员正在操作，你当前为只读。' }
+      : { text: 'AI 值守中', cls: 'st-on', hint: 'AI 在岗接待，敏感动作进入待确认队列。' };
 
-function aiContextFor(inst?: InstanceWithStatus) {
-  const n = seedOf((inst?.id || 'demo') + ':ctx');
-  const stages = ['新客咨询', '比价犹豫', '售后跟进', '复购唤醒'];
-  const risk = inst?.proxyEnabled === false ? '高风险：代理未启用' : inst?.wechat.phase === 'error' ? '中风险：应用安装异常' : '安全：仅建议回复，人工确认后发送';
-  return {
-    stage: stages[n % stages.length],
-    intent: 48 + (n % 47),
-    risk,
-    decision: ['建议先补充商品卖点，再引导留资', '检测到售后语境，建议先安抚再确认订单信息', '客户可能在比价，建议给出差异化权益', '适合发送复购优惠提醒，需人工确认'][n % 4],
-  };
-}
-
-function AiWorkbench({ inst, onTakeControl }: { inst?: InstanceWithStatus; onTakeControl: () => void }) {
-  const ctx = aiContextFor(inst);
   return (
     <aside className="iv-ai-workbench">
-      <div className="iv-ai-topline">AI 工作台</div>
-      <div className="iv-ai-title">{aiRoleFor(inst)}</div>
-      <div className="iv-ai-sub">实例：{inst?.name || '—'}</div>
+      <div className="iv-ai-topline">AI Context Rail</div>
+      <div className="iv-ai-title">{emp?.bound ? emp.name : '未绑定 AI 员工'}</div>
+      <div className="iv-ai-sub">
+        实例：{inst?.name || '—'}
+        {emp?.role && <> · {emp.glyph} {emp.role}岗</>}
+      </div>
 
+      {/* 当前 AI 员工：岗位 / 状态 / 权限 chips */}
       <div className="iv-ai-panel">
-        <span>当前客户画像</span>
-        <b>{ctx.stage}</b>
-        <small>意向分 {ctx.intent}/100 · 画像来自安全字段/本地演示，不显示聊天正文</small>
+        <span>当前 AI 员工</span>
+        <div className="iv-ai-emp">
+          <span className={'ai-dot ' + (emp?.statusCls ?? 'st-off')} />
+          <b>{emp?.bound ? `${emp.statusText}` : '未分配岗位'}</b>
+        </div>
+        {emp?.permissionKeys?.length ? (
+          <div className="iv-ai-chips">
+            {emp.permissionKeys.slice(0, 6).map((k) => (
+              <span key={k} className="iv-ai-chip">{permKeyLabel(k)}</span>
+            ))}
+          </div>
+        ) : (
+          <small>暂无权限键（未绑定或演示占位）</small>
+        )}
       </div>
+
+      {/* 当前客户画像：code / stage / intent / risk / memory */}
       <div className="iv-ai-panel">
-        <span>安全状态</span>
-        <b className={ctx.risk.startsWith('高风险') ? 'danger' : ''}>{ctx.risk}</b>
-        <small>发送、改备注、群操作默认需要人工确认</small>
+        <span>当前客户上下文</span>
+        {top ? (
+          <>
+            <b>
+              客户 {top.code} · {stageLabel(top.stage)}
+              <span className={'ai-status ai-status-' + (top.risk === 'high' ? 'off' : top.risk === 'medium' ? 'warn' : 'on')} style={{ marginLeft: 8 }}>
+                {RISK_LABEL[top.risk]}
+              </span>
+            </b>
+            <small>
+              意向 {top.intent ?? '—'}/100 · 记忆 {top.memActive}/{top.memCandidate} · 本实例共 {ctx?.customerCount ?? 0} 位客户
+            </small>
+          </>
+        ) : (
+          <>
+            <b>暂无客户画像</b>
+            <small>OCR 补全与画像抽取运行后，客户会按阶段 / 意向 / 风险沉淀。</small>
+          </>
+        )}
       </div>
+
+      {/* 待确认动作摘要 */}
+      <div className="iv-ai-panel">
+        <span>待确认动作</span>
+        <b className={risk?.pending ? 'danger' : ''}>{risk?.pending ? `${risk.pending} 个动作待人工确认` : '暂无待确认动作'}</b>
+        <button className="btn-text iv-ai-link" onClick={() => nav('/approvals')}>前往待确认中心 ›</button>
+      </div>
+
+      {/* AI 判断（安全派生文案，不含聊天正文） */}
       <div className="iv-ai-panel">
         <span>AI 判断</span>
-        <b>{ctx.decision}</b>
-        <small>待确认动作会进入 AI 员工中心，不在此处自动执行</small>
+        <b>{ctx?.decision ?? 'AI 值守中。'}</b>
+        <small>由实例状态 / 阶段 / 风险 / 意向派生，仅供参考；不引用聊天正文，敏感动作仍需人工确认。</small>
+      </div>
+
+      {/* 接管状态 */}
+      <div className="iv-ai-panel">
+        <span>接管状态</span>
+        <div className="iv-ai-emp">
+          <span className={'ai-dot ' + takeover.cls} />
+          <b>{takeover.text}</b>
+        </div>
+        <small>{takeover.hint}</small>
+      </div>
+
+      {/* 运行时间线：OCR → 画像 → 起草回复 → 待确认 → 接管 */}
+      <div className="iv-ai-panel">
+        <span>运行时间线</span>
+        <ul className="iv-ai-timeline">
+          {(ctx?.timeline ?? []).map((s) => (
+            <li key={s.key} className="iv-ai-tl">
+              <span className={'iv-ai-tl-dot ' + (s.cls || '')} />
+              <div className="iv-ai-tl-body">
+                <b>{s.label}</b>
+                <small>{s.detail}</small>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="iv-ai-actions">
-        <button className="btn btn-primary" onClick={onTakeControl}>接管当前实例</button>
-        <button className="btn" disabled title="后续接人审 API；当前不触发真实微信动作">确认建议</button>
+        <button className="btn btn-primary" onClick={onTakeControl}>{control?.mine ? '续约控制权' : '人工接管'}</button>
+        <button className="btn" disabled title="恢复 AI 值守需接入真实人审 / 控制释放 API，当前不触发真实动作">恢复 AI</button>
+      </div>
+
+      <div className="iv-ai-quick">
+        <button className="btn-text" onClick={() => nav('/customers')}>客户 CRM ›</button>
+        <button className="btn-text" onClick={() => nav('/approvals')}>待确认中心 ›</button>
+        <button className="btn-text" onClick={() => nav('/monitor')}>监控墙 ›</button>
       </div>
     </aside>
   );
@@ -1326,7 +1398,7 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
             </div>
           )}
           </div>
-          <AiWorkbench inst={inst} onTakeControl={takeControl} />
+          <AiWorkbench inst={inst} control={control} onTakeControl={takeControl} />
         </div>
       )}
     </div>

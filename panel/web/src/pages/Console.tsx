@@ -416,6 +416,9 @@ export default function Console({ onOpenMenu, onChangePassword }: { onOpenMenu: 
               <div className="con-base-head">
                 <span className="con-base-title">微信实例健康概览</span>
                 <span className="con-base-sub">AI 员工的底座 · {instances.length} 个实例 · {online} 在线{abnormal ? ` · ${abnormal} 异常` : ''}</span>
+                <button className="btn-text" onClick={() => nav(abnormal ? '/monitor?filter=abnormal' : '/monitor')}>
+                  {abnormal ? '监控墙看异常 ›' : '监控墙 ›'}
+                </button>
                 {isAdmin && (
                   <button className="btn-text" onClick={() => nav('/admin')}>
                     管理实例 ›

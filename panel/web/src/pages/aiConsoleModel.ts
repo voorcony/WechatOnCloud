@@ -16,6 +16,22 @@ const ROLES = ['售前', '售后', '复购', '群运营'] as const;
 export const ROLE_GLYPH: Record<string, string> = { 售前: '🛍️', 售后: '🛠️', 复购: '🔁', 群运营: '👥' };
 const label = (m: Record<string, string>, k: string): string => m[k] ?? k;
 
+// 权限键 → 中文（与 AI 员工中心一致的 allowlist 键名，非原始职责文案）。
+const KEY_LABELS: Record<string, string> = {
+  send_message: '发送消息',
+  reply: '回复客户',
+  contact_remark: '修改备注',
+  group_operation: '群操作',
+  read_history: '读取历史',
+  auto_reply: '自动回复',
+  need_approval: '需人工确认',
+  memory_write: '写入记忆',
+  memory_read: '读取记忆',
+  profile_update: '更新画像',
+  knowledge_read: '检索知识库',
+};
+export const permKeyLabel = (k: string): string => KEY_LABELS[k] ?? k;
+
 // deterministic 伪随机（按字符串派生），保证演示数字稳定不跳动。
 function seedOf(s: string): number {
   let h = 2166136261;
@@ -192,6 +208,17 @@ function buildActions(counts: Record<string, number>, slots: Slot[], realTasks?:
   return out;
 }
 
+// 单实例绑定的 AI 员工（按可见实例 id 归一化，供监控墙 tile / 单实例工作台复用）。
+export interface InstanceEmployee {
+  bound: boolean;
+  name: string; // 岗位助理 ···suffix（脱敏，非员工原始姓名）
+  role: string; // 售前 / 售后 / 复购 / 群运营 或 ''
+  glyph: string;
+  statusText: string;
+  statusCls: string; // st-on / st-warn / st-off
+  permissionKeys: string[]; // allowlist 键（安全），供渲染中文 chips
+}
+
 export interface AiConsoleModel {
   instances: InstanceWithStatus[];
   loaded: boolean;
@@ -202,6 +229,7 @@ export interface AiConsoleModel {
   pendingCounts: Record<string, number>;
   pendingTotal: number;
   actions: ApprovalAction[];
+  instanceEmployees: Record<string, InstanceEmployee>; // 按可见实例 id
 }
 
 interface Core {
@@ -209,6 +237,7 @@ interface Core {
   pendingCounts: Record<string, number>;
   pendingTotal: number;
   actions: ApprovalAction[];
+  instanceEmployees: Record<string, InstanceEmployee>;
 }
 
 function buildReal(c: AiConsolePayload, wocById: Map<string, InstanceWithStatus>): Core {
@@ -276,16 +305,49 @@ function buildReal(c: AiConsolePayload, wocById: Map<string, InstanceWithStatus>
   });
   const waitingTasks = c.recent_tasks.filter((t) => t.status === 'waiting_approval');
   const actions = buildActions(pendingCounts, slots, waitingTasks);
-  return { customers, pendingCounts, pendingTotal, actions };
+
+  // 单实例 → 绑定员工（仅命中可见实例的绑定，键为 WOC 实例 id）。
+  const instanceEmployees: Record<string, InstanceEmployee> = {};
+  for (const ic of c.instance_cards) {
+    const woc = ic.woc_instance_id ? wocById.get(ic.woc_instance_id) ?? null : null;
+    if (!woc) continue;
+    const empId = ic.bound_employee_ids[0];
+    const emp = empId != null ? c.employee_cards.find((e) => e.employee_id === empId) : undefined;
+    const roleCn = emp ? label(ROLE_LABELS, emp.role) : '';
+    instanceEmployees[woc.id] = {
+      bound: !!emp,
+      role: roleCn,
+      glyph: ROLE_GLYPH[roleCn] ?? '🤖',
+      name: emp ? `${roleCn}助理${emp.name_suffix ? ' ···' + emp.name_suffix : ''}` : '未分配',
+      statusText: emp ? (emp.status === 'active' ? '在岗' : emp.status === 'paused' ? '暂停' : emp.status) : '未绑定',
+      statusCls: emp ? (emp.status === 'active' ? 'st-on' : emp.status === 'paused' ? 'st-warn' : 'st-off') : 'st-off',
+      permissionKeys: ic.permission_keys ?? [],
+    };
+  }
+  return { customers, pendingCounts, pendingTotal, actions, instanceEmployees };
 }
+
+const DEMO_PERMS = ['read_history', 'auto_reply', 'send_message', 'contact_remark', 'group_operation', 'memory_write', 'profile_update'];
 
 function buildDemo(instances: InstanceWithStatus[]): Core {
   const customers: CrmCustomer[] = [];
   const slots: Slot[] = [];
+  const instanceEmployees: Record<string, InstanceEmployee> = {};
   instances.forEach((inst, i) => {
     const role = ROLES[i % ROLES.length];
     const empName = `${role}助理`;
     slots.push({ instName: inst.name, instId: inst.id, empName });
+    const bound = seedOf(inst.id + ':ai') % 10 >= 2; // ~80% 绑定，deterministic
+    const online = inst.runtime === 'running' && inst.wechat.installed && inst.proxyEnabled !== false;
+    instanceEmployees[inst.id] = {
+      bound,
+      role: bound ? role : '',
+      glyph: bound ? ROLE_GLYPH[role] ?? '🤖' : '🤖',
+      name: bound ? empName : '未分配',
+      statusText: bound ? (online ? '在岗' : '待岗') : '未绑定',
+      statusCls: bound ? (online ? 'st-on' : 'st-warn') : 'st-off',
+      permissionKeys: bound ? DEMO_PERMS.slice(0, 2 + (seedOf(inst.id + ':perm') % 4)) : [],
+    };
     const n = 3 + (seedOf(inst.id + ':cn') % 5);
     for (let j = 0; j < n; j++) {
       const seed = seedOf(inst.id + ':c' + j);
@@ -329,7 +391,7 @@ function buildDemo(instances: InstanceWithStatus[]): Core {
   };
   const pendingTotal = Object.values(pendingCounts).reduce((s, v) => s + v, 0);
   const actions = buildActions(pendingCounts, slots);
-  return { customers, pendingCounts, pendingTotal, actions };
+  return { customers, pendingCounts, pendingTotal, actions, instanceEmployees };
 }
 
 export function useAiConsoleModel(): AiConsoleModel {
@@ -359,5 +421,124 @@ export function useAiConsoleModel(): AiConsoleModel {
     real: !!real,
     demoReason: resp && resp.mode === 'demo_fallback' ? resp.reason : null,
     ...core,
+  };
+}
+
+// ==================== 单实例派生视图（监控墙 tile / 单实例工作台复用） ====================
+// 全部只读、安全：从共享模型按实例 id 过滤客户 / 待确认，按实例状态派生风险 / 时间线 / AI 判断文案，
+// 绝不产出聊天正文、回复原文、token。
+
+export function getInstanceEmployee(m: AiConsoleModel, instId: string | null | undefined): InstanceEmployee | null {
+  return instId ? m.instanceEmployees[instId] ?? null : null;
+}
+export function getInstanceCustomers(m: AiConsoleModel, instId: string | null | undefined): CrmCustomer[] {
+  if (!instId) return [];
+  return m.customers.filter((c) => c.instId === instId).sort((a, b) => (b.intent ?? 0) - (a.intent ?? 0));
+}
+export function getInstanceApprovals(m: AiConsoleModel, instId: string | null | undefined): ApprovalAction[] {
+  if (!instId) return [];
+  return m.actions.filter((a) => a.instId === instId);
+}
+
+export function instanceAbnormal(inst: InstanceWithStatus): boolean {
+  return inst.runtime !== 'running' || !inst.wechat.installed || inst.wechat.phase === 'error' || inst.proxyEnabled === false;
+}
+export function instanceOnline(inst: InstanceWithStatus): boolean {
+  return inst.runtime === 'running' && inst.wechat.installed && inst.proxyEnabled !== false;
+}
+// 未读：deterministic 占位（安全 fallback），实例不可用时恒为 0。
+export function getInstanceUnread(inst: InstanceWithStatus): number {
+  if (!instanceOnline(inst)) return 0;
+  const n = seedOf(inst.id + ':unread') % 7;
+  return n > 4 ? n - 4 : 0;
+}
+
+export interface InstanceBadge {
+  key: string;
+  label: string;
+  tone: 'ok' | 'warn' | 'danger';
+}
+export interface InstanceRiskSummary {
+  customers: number;
+  highRisk: number;
+  highIntent: number;
+  pending: number;
+  unread: number;
+  abnormal: boolean;
+  needsTakeover: boolean;
+  badges: InstanceBadge[];
+}
+export function getInstanceRiskSummary(m: AiConsoleModel, inst: InstanceWithStatus): InstanceRiskSummary {
+  const custs = getInstanceCustomers(m, inst.id);
+  const highRisk = custs.filter((c) => c.risk === 'high').length;
+  const highIntent = custs.filter((c) => c.highIntent).length;
+  const pending = getInstanceApprovals(m, inst.id).length;
+  const unread = getInstanceUnread(inst);
+  const abnormal = instanceAbnormal(inst);
+  const badges: InstanceBadge[] = [
+    inst.proxyEnabled === false
+      ? { key: 'proxy', label: '代理未启用', tone: 'danger' }
+      : { key: 'proxy', label: '代理正常', tone: 'ok' },
+    inst.wechat.installed
+      ? { key: 'app', label: '应用就绪', tone: 'ok' }
+      : { key: 'app', label: inst.wechat.phase === 'error' ? '安装异常' : '待安装', tone: inst.wechat.phase === 'error' ? 'danger' : 'warn' },
+    inst.runtime === 'running'
+      ? { key: 'run', label: '运行中', tone: 'ok' }
+      : { key: 'run', label: inst.runtime === 'missing' ? '未创建' : '已停止', tone: 'danger' },
+  ];
+  return { customers: custs.length, highRisk, highIntent, pending, unread, abnormal, needsTakeover: abnormal || highRisk > 0 || pending > 0, badges };
+}
+
+function deriveInstanceDecision(inst: InstanceWithStatus, top: CrmCustomer | null, risk: InstanceRiskSummary): string {
+  if (instanceAbnormal(inst)) {
+    if (inst.proxyEnabled === false) return '实例未启用代理，AI 已暂停自动动作；请先在「系统设置」配置代理并重启后再接管。';
+    if (inst.runtime !== 'running') return '实例未在运行，AI 值守已暂停；启动实例后可恢复接待。';
+    return '实例状态异常，AI 暂缓自动外发，建议人工检查后再恢复。';
+  }
+  if (risk.highRisk > 0) return `检测到 ${risk.highRisk} 位高风险客户，建议人工优先介入安抚，敏感动作转人工确认。`;
+  if (risk.pending > 0) return `有 ${risk.pending} 个待确认动作等待人工复核，确认后 AI 才会落地执行。`;
+  if (top && top.highIntent) return '存在高意向客户，建议 24 小时内跟进报价 / 促成；报价与承诺口径转人工确认。';
+  return 'AI 正常值守，持续接待并沉淀客户画像；敏感动作会进入待确认队列等待你确认。';
+}
+
+export interface InstanceTimelineStep {
+  key: string;
+  label: string;
+  detail: string;
+  cls: string; // st-on / st-busy / st-warn / ''
+}
+export function getInstanceTimeline(m: AiConsoleModel, inst: InstanceWithStatus): InstanceTimelineStep[] {
+  const online = instanceOnline(inst);
+  const custs = getInstanceCustomers(m, inst.id);
+  const risk = getInstanceRiskSummary(m, inst);
+  return [
+    { key: 'ocr', label: 'OCR 历史补全', detail: online ? '已同步聊天窗口截图，抽取安全字段' : '实例就绪后开始补全', cls: online ? 'st-on' : '' },
+    { key: 'profile', label: '客户画像抽取', detail: custs.length ? `已沉淀 ${custs.length} 位客户画像` : '暂无客户画像', cls: custs.length ? 'st-on' : '' },
+    { key: 'draft', label: '起草回复', detail: online ? 'AI 起草回复草稿，敏感内容转人工确认' : '待实例上线后起草', cls: online ? 'st-busy' : '' },
+    { key: 'approval', label: '待确认', detail: risk.pending ? `${risk.pending} 个动作等待人工确认` : '暂无待确认动作', cls: risk.pending ? 'st-warn' : 'st-on' },
+    { key: 'takeover', label: '人工接管', detail: risk.needsTakeover ? '建议人工接管处理' : 'AI 值守中，可随时接管', cls: risk.needsTakeover ? 'st-warn' : '' },
+  ];
+}
+
+export interface InstanceAiContext {
+  employee: InstanceEmployee | null;
+  topCustomer: CrmCustomer | null;
+  customerCount: number;
+  risk: InstanceRiskSummary;
+  decision: string;
+  timeline: InstanceTimelineStep[];
+}
+export function getInstanceAiContext(m: AiConsoleModel, inst: InstanceWithStatus): InstanceAiContext {
+  const employee = getInstanceEmployee(m, inst.id);
+  const custs = getInstanceCustomers(m, inst.id);
+  const topCustomer = custs[0] ?? null;
+  const risk = getInstanceRiskSummary(m, inst);
+  return {
+    employee,
+    topCustomer,
+    customerCount: custs.length,
+    risk,
+    decision: deriveInstanceDecision(inst, topCustomer, risk),
+    timeline: getInstanceTimeline(m, inst),
   };
 }
