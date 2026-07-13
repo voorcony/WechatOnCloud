@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { statusOf, useInstances } from '../AppShell';
 import { appProfile, type InstanceWithStatus } from '../api';
 import { InstanceIcon } from '../AppIcon';
+import { vncPreviewUrl } from './vncPreview';
 import {
   useAiConsoleModel,
   getInstanceEmployee,
@@ -15,6 +16,10 @@ import {
   type AiConsoleModel,
   type CrmCustomer,
 } from './aiConsoleModel';
+
+// 同屏最多默认自动载入的 VNC 缩略预览数（其余显示占位，点击按需载入）——限制并发 iframe/ws，避免过载。
+const MAX_LIVE_PREVIEWS = 6;
+type Layout = 'auto' | 'cols2' | 'cols3';
 
 // 多实例监控墙（/monitor）—— 完全对标产品模板监控页视觉：
 //   .page-h（标题 + 时间范围 / 导出占位）→ .src-note 数据来源标注 → .heat 活跃度热力图卡 →
@@ -72,6 +77,8 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
   const [params, setParams] = useSearchParams();
   const urlFilter = params.get('filter') as Filter | null;
   const [filter, setFilter] = useState<Filter>(urlFilter && FILTERS.includes(urlFilter) ? urlFilter : 'all');
+  const [layout, setLayout] = useState<Layout>('auto');
+  const [showPreview, setShowPreview] = useState(true);
 
   // 支持从总控台 /monitor?filter=abnormal 等深链直达。
   useEffect(() => {
@@ -113,6 +120,18 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [instances, filter, m.customers, m.actions, m.instanceEmployees],
   );
+
+  // 默认自动载入预览的实例：筛选后前 N 个在线实例（限制并发 iframe/ws，其余按需载入）。
+  const autoLiveIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!showPreview) return ids;
+    for (const inst of filtered) {
+      if (instanceOnline(inst)) ids.add(inst.id);
+      if (ids.size >= MAX_LIVE_PREVIEWS) break;
+    }
+    return ids;
+  }, [filtered, showPreview]);
+  const onlineTotal = filtered.filter(instanceOnline).length;
 
   // 活跃度热力图（24 格 · deterministic 占位，仅用于视觉；非真实逐时数据 → demo 标注）。
   const heat = useMemo(() => {
@@ -212,14 +231,32 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
         </div>
       </div>
 
-      {/* 筛选 */}
-      <div className="row" style={{ gap: 6, margin: '14px 0', flexWrap: 'wrap' }} role="tablist" aria-label="筛选实例">
-        {FILTERS.map((k) => (
-          <button key={k} className={'btn sm' + (filter === k ? ' primary' : '')} onClick={() => pickFilter(k)}>
-            {FILTER_LABELS[k]} {counts[k]}
+      {/* 筛选 + 排版 / 预览控制 */}
+      <div className="monitor-toolbar" style={{ margin: '14px 0' }}>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }} role="tablist" aria-label="筛选实例">
+          {FILTERS.map((k) => (
+            <button key={k} className={'btn sm' + (filter === k ? ' primary' : '')} onClick={() => pickFilter(k)}>
+              {FILTER_LABELS[k]} {counts[k]}
+            </button>
+          ))}
+        </div>
+        <div className="row" style={{ gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <span className="dim" style={{ fontSize: 12 }}>排版</span>
+          {(['auto', 'cols2', 'cols3'] as Layout[]).map((l) => (
+            <button key={l} className={'btn sm' + (layout === l ? ' primary' : '')} onClick={() => setLayout(l)}>
+              {l === 'auto' ? '自动' : l === 'cols2' ? '2 列' : '3 列'}
+            </button>
+          ))}
+          <button className={'btn sm' + (showPreview ? ' primary' : '')} onClick={() => setShowPreview((v) => !v)} title="开关全部 VNC 缩略预览（关闭可省资源）">
+            {showPreview ? '画面预览：开' : '画面预览：关'}
           </button>
-        ))}
+        </div>
       </div>
+      {showPreview && onlineTotal > MAX_LIVE_PREVIEWS && (
+        <div className="dim" style={{ fontSize: 12, marginBottom: 10 }}>
+          为避免过载，默认仅自动载入前 {MAX_LIVE_PREVIEWS} 个在线实例的画面；其余卡片点击缩略区可按需载入。
+        </div>
+      )}
 
       {/* 监控墙网格 */}
       {!loaded ? (
@@ -231,12 +268,14 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
           <div className="empty-sub">切换上方筛选条件，或联系管理员为你分配更多微信实例。</div>
         </div>
       ) : (
-        <div className="monitor-wall-grid">
+        <div className={'monitor-wall-grid' + (layout === 'auto' ? '' : ' ' + layout)}>
           {filtered.map((inst) => (
             <MonitorCard
               key={inst.id}
               m={m}
               inst={inst}
+              showPreview={showPreview}
+              defaultLive={autoLiveIds.has(inst.id)}
               onEnter={() => nav(`/i/${inst.id}`)}
             />
           ))}
@@ -278,13 +317,27 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
   );
 }
 
-function MonitorCard({ m, inst, onEnter }: { m: AiConsoleModel; inst: InstanceWithStatus; onEnter: () => void }) {
+function MonitorCard({
+  m,
+  inst,
+  showPreview,
+  defaultLive,
+  onEnter,
+}: {
+  m: AiConsoleModel;
+  inst: InstanceWithStatus;
+  showPreview: boolean;
+  defaultLive: boolean;
+  onEnter: () => void;
+}) {
   const st = statusOf(inst);
   const emp = getInstanceEmployee(m, inst.id);
   const risk = getInstanceRiskSummary(m, inst);
   const top: CrmCustomer | null = getInstanceCustomers(m, inst.id)[0] ?? null;
   const abnormal = instanceAbnormal(inst);
   const online = instanceOnline(inst);
+  const [manualLoad, setManualLoad] = useState(false);
+  const live = showPreview && online && (defaultLive || manualLoad);
 
   // 风险分布分段条：高风险 / 关注(待确认+未读) / 正常。
   const total = Math.max(1, risk.customers);
@@ -294,6 +347,28 @@ function MonitorCard({ m, inst, onEnter }: { m: AiConsoleModel; inst: InstanceWi
 
   return (
     <article className={'monitor-card' + (abnormal ? ' attn' : '')}>
+      {showPreview && (
+        <div className="monitor-vnc">
+          {!online ? (
+            <div className="monitor-vnc-off">
+              <InstanceIcon icon={inst.icon} appType={inst.appType} size={26} radius={7} />
+              <span>实例{st.text} · 暂无画面</span>
+            </div>
+          ) : live ? (
+            <>
+              <span className="vnc-live-badge"><span className="dot live" /> 实时 · 只读</span>
+              {/* view_only 缩放预览：不发输入、不改远端分辨率；点击进入 /i/id 接管 */}
+              <iframe title={`VNC 预览 ${inst.name}`} src={vncPreviewUrl(inst.id)} />
+              <div className="vnc-cover" onClick={onEnter} role="button" tabIndex={0} title="进入实例接管" />
+            </>
+          ) : (
+            <div className="monitor-vnc-idle" onClick={() => setManualLoad(true)} role="button" tabIndex={0} title="载入画面预览">
+              <span className="ib">🖥️</span>
+              <span>点击载入画面预览</span>
+            </div>
+          )}
+        </div>
+      )}
       <div className="monitor-head">
         <InstanceIcon icon={inst.icon} appType={inst.appType} size={34} radius={9} />
         <div style={{ flex: 1, minWidth: 0 }}>
