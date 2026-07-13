@@ -318,7 +318,7 @@ export default function Console({ onOpenMenu, onChangePassword }: { onOpenMenu: 
 
                 <PanelCard
                   title="待确认动作"
-                  action={{ text: '前往处理 ›', onClick: () => nav('/ai-employees?tab=pending') }}
+                  action={{ text: '前往处理 ›', onClick: () => nav('/approvals') }}
                 >
                   <div className="con-note">AI 起草的发送 / 改备注 / 群操作等敏感动作会在此排队，需你确认后才执行。总控台只读，不触发真实微信动作。</div>
                   {model.pending.length === 0 || model.pendingTotal === 0 ? (
@@ -340,7 +340,7 @@ export default function Console({ onOpenMenu, onChangePassword }: { onOpenMenu: 
               <div className="con-col">
                 <PanelCard
                   title="高意向客户"
-                  action={{ text: '查看全部 ›', onClick: () => nav('/ai-employees?tab=customers') }}
+                  action={{ text: '查看全部 ›', onClick: () => nav('/customers') }}
                 >
                   {model.customers.length === 0 ? (
                     <div className="con-hollow">暂无高意向客户画像。</div>
@@ -379,7 +379,7 @@ export default function Console({ onOpenMenu, onChangePassword }: { onOpenMenu: 
                         </button>
                       ))}
                       {model.riskCustomers > 0 && (
-                        <button className="con-risk" onClick={() => nav('/ai-employees?tab=customers')}>
+                        <button className="con-risk" onClick={() => nav('/customers')}>
                           <span className="con-risk-dot warn" />
                           <div className="con-risk-id">
                             <span className="con-risk-name">{model.riskCustomers} 位客户标记风险</span>

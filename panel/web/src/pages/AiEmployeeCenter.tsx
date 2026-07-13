@@ -1002,16 +1002,30 @@ function CustomerCard({ cu }: { cu: CustomerVM }) {
 
 // ==================== 客户画像 ====================
 function CustomerBoard({ customers, demo }: { customers: CustomerVM[]; demo: boolean }) {
+  const nav = useNavigate();
   const [risk, setRisk] = useState<'all' | Risk>('all');
   const filtered = risk === 'all' ? customers : customers.filter((c) => c.risk === risk);
   const sorted = filtered.slice().sort((a, b) => (b.intent ?? 0) - (a.intent ?? 0));
-  if (customers.length === 0) return <div className="ai-note">暂无客户画像。请先启动 OCR 历史补全并运行记忆 / 画像抽取。</div>;
+  if (customers.length === 0)
+    return (
+      <>
+        <div className="ai-crosslink">
+          <span>需要按客户维度筛选 / 查看画像与 AI 建议？</span>
+          <button className="btn-text" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
+        </div>
+        <div className="ai-note">暂无客户画像。请先启动 OCR 历史补全并运行记忆 / 画像抽取。</div>
+      </>
+    );
   const counts = {
     high: customers.filter((c) => c.risk === 'high').length,
     medium: customers.filter((c) => c.risk === 'medium').length,
   };
   return (
     <>
+      <div className="ai-crosslink">
+        <span>需要按客户维度管理、看 AI 跟进建议与所属微信？</span>
+        <button className="btn-text" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
+      </div>
       <div className="ai-note">
         客户画像来自 OCR 入库消息 + 记忆 / 画像抽取。只展示 hash、阶段、意向、风险与记忆计数，不显示聊天正文。
         {demo && ' 当前为演示数据。'}
@@ -1136,8 +1150,13 @@ function KnowledgePanel({
 
 // ==================== 待确认 ====================
 function PendingBoard({ pending, demo }: { pending: PendingVM; demo: boolean }) {
+  const nav = useNavigate();
   return (
     <>
+      <div className="ai-crosslink">
+        <span>需要按风险 / 类型分流处理待确认动作队列？</span>
+        <button className="btn-text" onClick={() => nav('/approvals')}>打开待确认中心 ›</button>
+      </div>
       <div className="ai-warn">
         以下为等待人工确认 / 计划中的动作汇总{demo ? '（演示）' : '（真实计数）'}。<b>本页只读，不触发任何真实微信动作</b>，按钮均不可用。
       </div>

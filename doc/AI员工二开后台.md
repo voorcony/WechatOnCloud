@@ -107,6 +107,42 @@ PR2 把 `/ai-employees` 从「数据表 / 卡片集合」升级成真正的 **AI
 
 禁止渲染：聊天正文、回复正文、token、绑定串明文、知识库原始标题、员工原始姓名、原始职责。允许渲染：hash / suffix / count / status / keys / stage·risk·intent / 脱敏摘要。`bind_payload_text` 仅用于 `QRCode.toDataURL` 生成二维码，不以文本 / `<code>` 形式出现。知识导入 / 绑定在未接入真实数据源时按钮 disabled，接入后可用。
 
+## 信息架构（PR3：客户画像 CRM / 待确认中心独立化）
+
+PR3 把「客户画像」和「待确认」从 AI 员工中心内部 tab，升级成两个独立产品路由，更贴近真实 SCRM（企微 / Intercom）与审批队列（Gorgias macros approval / Linear inbox / 风控队列）的使用心智。React 内部新增路由（生产反代路径仍为 `/wechat/woc`）：
+
+```text
+客户    /customers   —— 客户画像 CRM（列表 + 筛选 + 画像 + AI 建议）
+待确认  /approvals   —— 待确认中心（动作队列 + 风险 + 审计）
+```
+
+- 侧栏「客户 / 待确认」不再 `?tab=` 跳 AI 员工中心，而是进入独立页面；总控台「高意向客户 / 风险客户」跳 `/customers`，「待确认动作」跳 `/approvals`。
+- AI 员工中心保留客户 / 待确认 tab，并新增交叉入口条「打开客户 CRM ›」「打开待确认中心 ›」。
+
+### 共享只读模型 `aiConsoleModel.ts`
+
+两页共用 `useAiConsoleModel()`：真实模式读取 `/api/ai-employees/console`（`mode="real"`，allowlist + 按可见实例过滤），失败回退 deterministic 演示（`seedOf` 派生，不跳动）。归一化产出 `CrmCustomer[]`（客户画像）、`pendingCounts` / `ApprovalAction[]`（待确认队列），并把客户 / 动作按 `bound_employee_ids`、实例 hash 关联到负责员工与可见实例（命中可跳转接管）。AI 跟进建议与风险理由由 `stage / risk / intent / 活跃度` 派生成安全产品文案，绝不引用聊天正文。
+
+### `/customers` 客户画像 CRM
+
+- **Hero + KPI**：客户数 / 高意向 / 高风险 / 今日观察 / 记忆数。
+- **左·列表 + 筛选**：全部 / 高意向 / 高风险 / 售后 / 沉默；客户项显示 code（hash 前缀）、阶段、所属微信、最近观察、意向分、风险点。
+- **中·画像**：客户 hash、阶段、意向分、风险、消息数（收 / 发）、活跃 / 候选记忆、所属微信 suffix + WOC 可见实例名、最近观察，以及 AI 跟进建议块。
+- **右·画像栏**：负责 AI 员工、所属微信（命中可见实例可「接管实例」跳 `/i/:id`，否则 disabled）、最近观察、风险提示。
+
+### `/approvals` 待确认中心
+
+- **Hero + KPI**：总待确认 / 回复待人工 / 计划发送 / 改备注 / 群操作。
+- **动作类型**（基于 pending counts + `recent_tasks` 派生）：`reply_jobs_needs_human` / `employee_tasks_waiting_approval` / `send_actions_planned` / `contact_remark_actions_planned` / `group_operation_actions_planned`。
+- **左·队列（局部深色工作队列面板）**：按类型分流筛选，行显示风险点、动作类型、所属微信、关联员工、发起时间、状态。真实模式用 `recent_tasks` 的脱敏摘要富化对应条目；无真实 action 列表时按计数展开为 deterministic 安全占位队列。
+- **右·详情**：脱敏摘要、动作类型 / 风险等级 / 关联员工 / 所属微信 / 时间 / 状态、风险理由、审计提示。批准 / 修改 / 拒绝为 disabled 占位（**真实审批写操作 API 后续接入**），「接管实例」命中可见实例时跳 `/i/:id`。
+
+> 页面明确声明：当前仅展示聚合待确认动作的安全视图，队列正文均脱敏，不触发任何真实微信动作。
+
+### 安全展示约束（PR3）
+
+沿用 PR2 约束：只渲染 hash / suffix / count / status / keys / stage·risk·intent / 脱敏摘要；禁止聊天正文、回复正文、token、绑定串明文、知识库原始标题、员工原始姓名、原始职责。AI 建议 / 风险理由 / 占位队列文案均为派生产品文案，不含任何原文。
+
 ## 安全边界
 
 - 不新增租户/子账号/实例授权模型，继续复用 WOC `useAuth()` / `useInstances()` / 后端可见实例过滤。
