@@ -428,10 +428,10 @@ export type AiEmployeeServiceRunsResponse =
 
 export interface AiServiceActionPlanResponse {
   ok: true;
-  mode: 'dry_run_disabled' | 'execute_guard_blocked';
+  mode: 'dry_run_disabled' | 'execute_guard_blocked' | 'executed';
   enabled: boolean;
   action: 'start' | 'stop' | 'restart';
-  executable: false;
+  executable: boolean;
   execute_requested: boolean;
   confirm_required: boolean;
   admin_required: boolean;
@@ -445,6 +445,16 @@ export interface AiServiceActionPlanResponse {
     run_id?: number;
     run_status?: string;
     error_hash?: string;
+  };
+  execution_result: null | {
+    status: string;
+    pid_alive: boolean;
+    record: null | {
+      recorded: boolean;
+      run_id?: number;
+      run_status?: string;
+      error_hash?: string;
+    };
   };
 }
 
