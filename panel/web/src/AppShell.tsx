@@ -9,6 +9,7 @@ import InstanceView from './pages/Desktop';
 import Admin from './pages/Admin';
 import AiEmployeeCenter, { AiEmployeeIcon } from './pages/AiEmployeeCenter';
 import MonitorWall from './pages/MonitorWall';
+import Console, { ConsoleIcon } from './pages/Console';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -67,6 +68,17 @@ const Icon = {
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="14" rx="2.5" />
       <path d="M8 21h8M12 18v3M7 9h4M13 9h4M7 13h4M13 13h4" />
+    </svg>
+  ),
+  customers: (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="8" r="3.4" /><path d="M2.5 19a6.5 6.5 0 0 1 13 0" />
+      <path d="M16.5 5.2a3.2 3.2 0 0 1 0 6.1" /><path d="M18 13.5a6 6 0 0 1 3.5 5.5" />
+    </svg>
+  ),
+  pending: (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l2.5 2.5L16 9" /><circle cx="12" cy="12" r="9" />
     </svg>
   ),
   gear: (
@@ -145,7 +157,7 @@ export default function AppShell() {
         <div className="shell-backdrop" onClick={() => setDrawer(false)} />
         <main className="workspace">
           <Routes>
-            <Route path="/" element={<HomeView onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
+            <Route path="/" element={<Console onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
             <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
             <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
@@ -168,12 +180,18 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
   const isAdmin = user?.role === 'admin';
   const go = (p: string) => nav(p);
 
+  // AI 员工中心承载多个产品模块（客户 / 待确认 …），用 ?tab= 直达并高亮对应侧栏项
+  const tab = new URLSearchParams(loc.search).get('tab');
+  const onAi = loc.pathname === '/ai-employees';
+  const aiTabActive = (t: string) => onAi && tab === t;
+  const aiMain = onAi && (!tab || (tab !== 'customers' && tab !== 'pending'));
+
   return (
     <aside className="sidebar">
       <div className="sb-top">
         <div className="sb-brand">
           <img src="/favicon.svg" className="sb-logo" alt="" />
-          {!collapsed && <span className="sb-name">云微</span>}
+          {!collapsed && <span className="sb-name">AI Console</span>}
         </div>
         <button className="sb-collapse" title="折叠侧栏 (⌘B)" onClick={onToggleCollapsed}>
           {Icon.collapse}
@@ -181,29 +199,29 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
       </div>
 
       <nav className="sb-nav">
-        <button className={'sb-item' + (loc.pathname === '/' ? ' on' : '')} onClick={() => go('/')} title="主页">
-          <span className="sb-ic">{Icon.home}</span>
-          {!collapsed && <span className="sb-label">主页</span>}
+        <button className={'sb-item' + (loc.pathname === '/' ? ' on' : '')} onClick={() => go('/')} title="总控台">
+          <span className="sb-ic">{ConsoleIcon}</span>
+          {!collapsed && <span className="sb-label">总控台</span>}
         </button>
-        <button
-          className={'sb-item' + (loc.pathname === '/ai-employees' ? ' on' : '')}
-          onClick={() => go('/ai-employees')}
-          title="AI 员工"
-        >
+        <button className={'sb-item' + (aiMain ? ' on' : '')} onClick={() => go('/ai-employees')} title="AI 员工">
           <span className="sb-ic">{AiEmployeeIcon}</span>
           {!collapsed && <span className="sb-label">AI 员工</span>}
         </button>
-        <button
-          className={'sb-item' + (loc.pathname === '/monitor' ? ' on' : '')}
-          onClick={() => go('/monitor')}
-          title="监控墙"
-        >
+        <button className={'sb-item' + (aiTabActive('customers') ? ' on' : '')} onClick={() => go('/ai-employees?tab=customers')} title="客户">
+          <span className="sb-ic">{Icon.customers}</span>
+          {!collapsed && <span className="sb-label">客户</span>}
+        </button>
+        <button className={'sb-item' + (aiTabActive('pending') ? ' on' : '')} onClick={() => go('/ai-employees?tab=pending')} title="待确认">
+          <span className="sb-ic">{Icon.pending}</span>
+          {!collapsed && <span className="sb-label">待确认</span>}
+        </button>
+        <button className={'sb-item' + (loc.pathname === '/monitor' ? ' on' : '')} onClick={() => go('/monitor')} title="监控墙">
           <span className="sb-ic">{Icon.monitor}</span>
           {!collapsed && <span className="sb-label">监控墙</span>}
         </button>
       </nav>
 
-      {!collapsed && <div className="sb-section">实例</div>}
+      {!collapsed && <div className="sb-section">微信实例</div>}
       <div className="sb-list">
         {instances.length === 0 && !collapsed && <div className="sb-empty">暂无可用实例</div>}
         {instances.map((inst) => {
@@ -226,10 +244,10 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
         <button
           className={'sb-item' + (loc.pathname === '/admin' ? ' on' : '')}
           onClick={() => go('/admin')}
-          title={isAdmin ? '管理' : '设置'}
+          title="系统设置"
         >
           <span className="sb-ic">{Icon.gear}</span>
-          {!collapsed && <span className="sb-label">{isAdmin ? '管理' : '设置'}</span>}
+          {!collapsed && <span className="sb-label">系统设置</span>}
         </button>
         <button
           className="sb-item"
@@ -274,7 +292,7 @@ const themeIcon: Record<ThemeMode, JSX.Element> = {
 };
 // 主题开关：统一控制「面板」+「实例桌面」深色。面板部分立即生效（本地 CSS）；实例部分仅管理员可改
 // （服务端持久化 + 对运行中实例 docker exec 实时切换；非管理员只切自己的面板观感，不动实例）。
-function ThemeToggle() {
+export function ThemeToggle() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [mode, setMode] = useState<ThemeMode>(() => getThemeMode());
@@ -332,89 +350,6 @@ function ThemeToggle() {
     <button className="theme-toggle" onClick={cycle} title={hint} aria-label={`主题：${label}`}>
       {themeIcon[mode]}
     </button>
-  );
-}
-
-function HomeView({ onOpenMenu, onChangePassword }: { onOpenMenu: () => void; onChangePassword: () => void }) {
-  const { user } = useAuth();
-  const { instances, loaded } = useInstances();
-  const nav = useNavigate();
-  const isAdmin = user?.role === 'admin';
-
-  return (
-    <div className="ws-page">
-      <header className="ws-head">
-        <button className="ws-menu" onClick={onOpenMenu} aria-label="菜单">
-          {Icon.menu}
-        </button>
-        <span className="ws-title">主页</span>
-        <ThemeToggle />
-      </header>
-
-      <div className="content">
-        <div className="hello">
-          你好，<b>{user?.username}</b>
-          {isAdmin && <span className="tag">管理员</span>}
-        </div>
-
-        {user?.mustChangePassword && (
-          <button className="warn-banner" onClick={onChangePassword}>
-            <span className="warn-icon">!</span>
-            <span className="warn-text">
-              <b>你还在使用默认密码</b>
-              <span>该系统登录着你的微信，请立即修改密码 ›</span>
-            </span>
-          </button>
-        )}
-
-        <div className="section-row">
-          <span className="section-title">我的实例</span>
-          {isAdmin && (
-            <button className="btn-text" onClick={() => nav('/admin')}>
-              管理 ›
-            </button>
-          )}
-        </div>
-
-        {loaded && instances.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-blob">
-              <img src="/favicon.svg" alt="" />
-            </div>
-            <div className="empty-title">还没有实例</div>
-            <div className="empty-sub">{isAdmin ? '去「管理」新建一个实例' : '请联系管理员为你分配实例'}</div>
-          </div>
-        ) : (
-          <div className="inst-grid">
-            {instances.map((inst) => {
-              const st = statusOf(inst);
-              const prof = appProfile(inst.appType);
-              const meta = inst.wechat.installed
-                ? `${prof.label} ${inst.wechat.version || ''}`.trim()
-                : inst.runtime === 'running' && prof.needsInstall
-                  ? `待下载安装${prof.label}`
-                  : '';
-              return (
-                <button key={inst.id} className="home-card" onClick={() => nav(`/i/${inst.id}`)}>
-                  <span className="home-card-av">
-                    <InstanceIcon icon={inst.icon} appType={inst.appType} size={42} radius={12} />
-                  </span>
-                  <span className="home-card-main">
-                    <span className="home-card-name">{inst.name}</span>
-                    <span className="home-card-meta">
-                      <span className={'home-card-st ' + st.cls}>● {st.text}</span>
-                      {meta && <span className="home-card-ver">{meta}</span>}
-                    </span>
-                  </span>
-                  <span className="enter-arrow">›</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-      </div>
-    </div>
   );
 }
 

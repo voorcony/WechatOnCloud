@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useInstances, statusOf } from '../AppShell';
 import {
@@ -134,8 +134,19 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const { user } = useAuth();
   const { instances, loaded } = useInstances();
   const nav = useNavigate();
-  const [seg, setSeg] = useState<Seg>('overview');
+  const loc = useLocation();
   const isAdmin = user?.role === 'admin';
+
+  // 支持从侧栏「客户 / 待确认」等入口用 ?tab= 直达对应分段，并随 URL 变化同步。
+  const tabParam = new URLSearchParams(loc.search).get('tab');
+  const validSeg = (t: string | null): Seg | null =>
+    t && SEGMENTS.some((s) => s.key === t) ? (t as Seg) : null;
+  const [seg, setSeg] = useState<Seg>(() => validSeg(tabParam) ?? 'overview');
+  useEffect(() => {
+    const s = validSeg(new URLSearchParams(loc.search).get('tab'));
+    if (s) setSeg(s);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.search]);
 
   // 拉取真实 console 快照（只读）。失败一律视为 fallback，绝不阻塞页面。
   const [resp, setResp] = useState<AiEmployeeConsoleResponse | null>(null);
@@ -771,7 +782,7 @@ function RealBind({ c }: { c: AiConsolePayload }) {
         <div className="ai-bind-payload">
           <div className="ai-bind-title">一次性绑定 payload</div>
           {qrUrl ? <img className="ai-qrbox" src={qrUrl} alt="扫码绑定秘书二维码" /> : <div className="ai-qrbox">生成中</div>}
-          <div className="ai-bind-code">{payload.bind_payload_text}</div>
+          <div className="ai-note">扫码即绑定；原始绑定串只编码进上方二维码，不在页面以明文展示。</div>
           <div className="ai-note">channel #{payload.channel_id} · payload hash {payload.bind_payload_hash} · token hash {payload.bind_token_hash}</div>
         </div>
       )}
