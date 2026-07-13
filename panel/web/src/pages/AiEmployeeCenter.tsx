@@ -730,7 +730,8 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const [serviceHealth, setServiceHealth] = useState<AiEmployeeServiceHealthResponse | null>(null);
   const [serviceRuns, setServiceRuns] = useState<AiEmployeeServiceRunsResponse | null>(null);
   const [serviceActionPlan, setServiceActionPlan] = useState<AiServiceActionPlanResponse | null>(null);
-  useEffect(() => {
+  const [startingService, setStartingService] = useState(false);
+  const refreshServiceState = () => {
     api
       .aiEmployeeServiceHealth()
       .then((r) => setServiceHealth(r))
@@ -743,6 +744,9 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       .aiEmployeeServiceActionPlan('start')
       .then((r) => setServiceActionPlan(r))
       .catch(() => setServiceActionPlan(null));
+  };
+  useEffect(() => {
+    refreshServiceState();
   }, []);
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
@@ -810,7 +814,24 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       </div>
 
       <OperationsHealthCard health={vm.health} demo={!real} />
-      <ServiceHealthCard resp={serviceHealth} runs={serviceRuns} actionPlan={serviceActionPlan} />
+      <ServiceHealthCard
+        resp={serviceHealth}
+        runs={serviceRuns}
+        actionPlan={serviceActionPlan}
+        isAdmin={isAdmin}
+        starting={startingService}
+        onStartObserveOnly={async () => {
+          if (!window.confirm('启动 observe-only AI 员工？\n\n只观察/记录，不发送微信；会 baseline 当前消息，避免处理历史消息。')) return;
+          setStartingService(true);
+          try {
+            const r = await api.aiEmployeeServiceActionPlan('start', { execute: true, confirm: true });
+            setServiceActionPlan(r);
+            refreshServiceState();
+          } finally {
+            setStartingService(false);
+          }
+        }}
+      />
 
       <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
         {SEGMENTS.map((s) => (
@@ -881,7 +902,7 @@ function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boo
 }
 
 
-function ServiceHealthCard({ resp, runs, actionPlan }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null; actionPlan: AiServiceActionPlanResponse | null }) {
+function ServiceHealthCard({ resp, runs, actionPlan, isAdmin, starting, onStartObserveOnly }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null; actionPlan: AiServiceActionPlanResponse | null; isAdmin: boolean; starting: boolean; onStartObserveOnly: () => void | Promise<void> }) {
   if (!resp) return null;
   const h = resp.mode === 'real' ? resp.health : null;
   const state = h?.service_state ?? 'unknown';
@@ -935,7 +956,7 @@ function ServiceHealthCard({ resp, runs, actionPlan }: { resp: AiEmployeeService
             {runs?.mode === 'real' && runs.runs.runs.length === 0 && (
               <div className="safe-note" style={{ marginTop: 12 }}>暂无 service_lifecycle 运行记录。</div>
             )}
-            {actionPlan && <ServiceActionPlanCard plan={actionPlan} />}
+            {actionPlan && <ServiceActionPlanCard plan={actionPlan} isAdmin={isAdmin} starting={starting} onStartObserveOnly={onStartObserveOnly} />}
           </>
         ) : (
           <div className="safe-note">AI 员工服务 health 接口未配置或不可用；本卡只读，不影响现有 console 数据。</div>
