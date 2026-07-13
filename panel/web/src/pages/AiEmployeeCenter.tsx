@@ -20,6 +20,7 @@ import {
   type AiPersonaDraft,
   type AiAutoReplyDraft,
   type AiEmployeeServiceHealthResponse,
+  type AiEmployeeServiceRunsResponse,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -726,11 +727,16 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   }, []);
 
   const [serviceHealth, setServiceHealth] = useState<AiEmployeeServiceHealthResponse | null>(null);
+  const [serviceRuns, setServiceRuns] = useState<AiEmployeeServiceRunsResponse | null>(null);
   useEffect(() => {
     api
       .aiEmployeeServiceHealth()
       .then((r) => setServiceHealth(r))
       .catch(() => setServiceHealth(null));
+    api
+      .aiEmployeeServiceRuns()
+      .then((r) => setServiceRuns(r))
+      .catch(() => setServiceRuns(null));
   }, []);
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
@@ -798,7 +804,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       </div>
 
       <OperationsHealthCard health={vm.health} demo={!real} />
-      <ServiceHealthCard resp={serviceHealth} />
+      <ServiceHealthCard resp={serviceHealth} runs={serviceRuns} />
 
       <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
         {SEGMENTS.map((s) => (
@@ -869,7 +875,7 @@ function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boo
 }
 
 
-function ServiceHealthCard({ resp }: { resp: AiEmployeeServiceHealthResponse | null }) {
+function ServiceHealthCard({ resp, runs }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null }) {
   if (!resp) return null;
   const h = resp.mode === 'real' ? resp.health : null;
   const state = h?.service_state ?? 'unknown';
@@ -897,8 +903,32 @@ function ServiceHealthCard({ resp }: { resp: AiEmployeeServiceHealthResponse | n
               <span className="chip outline">log: {String(h.log_summary.path_suffix ?? '—')}</span>
             </div>
             <div className="dim" style={{ marginTop: 8, fontSize: 11 }}>
-              只读 health/status；当前页面不提供启动、停止或重启按钮，不触发真实微信动作。
+              只读 health/status/recent-runs；当前页面不提供启动、停止或重启按钮，不触发真实微信动作。
             </div>
+            {runs?.mode === 'real' && runs.runs.runs.length > 0 && (
+              <div className="card" style={{ marginTop: 12, overflow: 'hidden' }}>
+                <div className="card-h">
+                  <span className="title">服务生命周期记录</span>
+                  <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>最近 {runs.runs.run_count} 条 · service_lifecycle</span>
+                </div>
+                <table className="t">
+                  <thead><tr><th>run</th><th>状态</th><th>摘要</th><th>时间</th></tr></thead>
+                  <tbody>
+                    {runs.runs.runs.slice(-6).reverse().map((r) => (
+                      <tr key={r.run_id}>
+                        <td className="mono">#{r.run_id}</td>
+                        <td><span className={'dot ' + (r.status === 'completed' ? 'st-on' : r.status === 'failed' ? 'st-off' : 'st-busy')} /> {r.status}</td>
+                        <td className="dim mono">{r.redacted_summary || '—'}</td>
+                        <td className="dim">{r.started_at ? ago(r.started_at) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {runs?.mode === 'real' && runs.runs.runs.length === 0 && (
+              <div className="safe-note" style={{ marginTop: 12 }}>暂无 service_lifecycle 运行记录。</div>
+            )}
           </>
         ) : (
           <div className="safe-note">AI 员工服务 health 接口未配置或不可用；本卡只读，不影响现有 console 数据。</div>

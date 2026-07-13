@@ -403,6 +403,28 @@ export type AiEmployeeServiceHealthResponse =
       health: AiServiceHealthPayload;
     };
 
+
+export interface AiServiceRunsPayload {
+  status: string;
+  employee_id: number;
+  run_type: string | null;
+  run_count: number;
+  runs: AiRunCard[];
+}
+export type AiEmployeeServiceRunsResponse =
+  | {
+      enabled: false;
+      mode: 'demo_fallback';
+      reason: 'not_configured' | 'unavailable';
+      runs: null;
+    }
+  | {
+      enabled: true;
+      mode: 'real';
+      source: 'ai-wechat-employee';
+      runs: AiServiceRunsPayload;
+    };
+
 export type AiEmployeeConsoleResponse =
   | {
       enabled: false;
@@ -464,6 +486,7 @@ export const api = {
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
   aiEmployeeApprovalQueue: () => req<AiEmployeeApprovalQueueResponse>('/api/ai-employees/approval-queue'),
   aiEmployeeServiceHealth: () => req<AiEmployeeServiceHealthResponse>('/api/ai-employees/service-health'),
+  aiEmployeeServiceRuns: () => req<AiEmployeeServiceRunsResponse>('/api/ai-employees/service-runs'),
   createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
   importAiEmployeeKnowledge: (title: string, markdown: string) =>
     req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {
