@@ -1870,11 +1870,27 @@ button {
   justify-content: center;
   background: var(--base);
 }
-/* VNC 分支：纵向 flex —— 画面区(.iv-canvas, flex:1) 在上，中文输入条在下，互不重叠。
+/* VNC 分支：默认纵向 flex —— 画面区(.iv-canvas, flex:1) 在上，中文输入条在下，互不重叠。
    输入条占用布局空间 → iframe 区域变小 → resize=remote 让远端桌面同步缩小，微信画面完整可见、不被遮。 */
 .iv-stage--vnc {
   display: flex;
   flex-direction: column;
+}
+.iv-stage--with-ai {
+  flex-direction: row;
+  gap: 12px;
+  padding: 12px;
+  background: var(--base);
+}
+.iv-vnc-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--crease), 0 14px 40px rgba(var(--shadow) / 0.16);
 }
 .iv-canvas {
   position: relative;
@@ -2033,8 +2049,267 @@ button {
   padding: 0 22px;
   height: 44px;
 }
+.iv-ai-workbench {
+  flex: 0 0 320px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(247,248,251,0.88));
+  box-shadow: var(--crease), 0 14px 40px rgba(var(--shadow) / 0.12);
+  color: var(--text);
+  overflow: auto;
+}
+.iv-ai-topline {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--wx-green-dark);
+}
+.iv-ai-title {
+  font-size: 20px;
+  font-weight: 800;
+}
+.iv-ai-sub,
+.iv-ai-panel small {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.iv-ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 13px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--crease);
+}
+.iv-ai-panel span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.iv-ai-panel b {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.iv-ai-panel b.danger {
+  color: var(--danger);
+}
+.iv-ai-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.iv-ai-actions .btn {
+  height: 38px;
+  padding: 0 14px;
+}
 
-/* —— 移动端：侧栏变抽屉 —— */
+@media (max-width: 1180px) {
+  .iv-stage--with-ai {
+    flex-direction: column;
+  }
+  .iv-ai-workbench {
+    flex: 0 0 auto;
+    width: auto;
+    max-height: 260px;
+  }
+}
+
+/* 多实例监控墙 */
+.monitor-content {
+  max-width: none !important;
+}
+.monitor-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: stretch;
+  padding: 22px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(19, 23, 34, 0.96), rgba(32, 45, 69, 0.92));
+  color: #fff;
+  box-shadow: 0 20px 50px rgba(20, 30, 50, 0.18);
+}
+.monitor-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  font-weight: 800;
+}
+.monitor-hero h2 {
+  margin: 6px 0 8px;
+  font-size: 28px;
+}
+.monitor-hero p {
+  margin: 0;
+  max-width: 720px;
+  opacity: 0.78;
+  line-height: 1.65;
+}
+.monitor-kpis {
+  min-width: 220px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-content: center;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.09);
+}
+.monitor-kpis b {
+  font-size: 22px;
+}
+.monitor-kpis span {
+  opacity: 0.72;
+}
+.monitor-kpis .danger { color: #ff8f8f; }
+.monitor-kpis .warn { color: #ffd27a; }
+.monitor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.monitor-filters,
+.monitor-layouts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.monitor-pill,
+.monitor-layout {
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--crease);
+  font-weight: 700;
+  cursor: pointer;
+}
+.monitor-pill.on,
+.monitor-layout.on {
+  background: var(--text);
+  color: var(--surface);
+}
+.monitor-grid {
+  display: grid;
+  gap: 14px;
+}
+.monitor-grid.auto { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+.monitor-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.monitor-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.monitor-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.monitor-tile {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--crease), 0 12px 34px rgba(var(--shadow) / 0.12);
+}
+.monitor-tile.warn { outline: 1px solid rgba(245, 166, 35, 0.35); }
+.monitor-tile-head,
+.monitor-tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+}
+.monitor-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.monitor-title b,
+.monitor-title span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monitor-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.monitor-status {
+  flex: none;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--trough);
+}
+.monitor-status.st-on { color: var(--wx-green-dark); }
+.monitor-status.st-off { color: var(--danger); }
+.monitor-status.st-warn,
+.monitor-status.st-busy { color: #9a6400; }
+.monitor-frame-wrap {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: #06070a;
+}
+.monitor-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.monitor-frame-fallback {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(255,255,255,0.82);
+  text-align: center;
+  padding: 18px;
+}
+.monitor-frame-fallback small { color: rgba(255,255,255,0.55); }
+.monitor-unread {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #ff4d4f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+.monitor-take {
+  height: 34px;
+  padding: 0 12px;
+}
+.monitor-empty {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+@media (max-width: 1100px) {
+  .monitor-grid.cols-3,
+  .monitor-grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .monitor-hero { flex-direction: column; }
+  .monitor-grid,
+  .monitor-grid.cols-2,
+  .monitor-grid.cols-3,
+  .monitor-grid.cols-4 { grid-template-columns: 1fr; }
+}
+
 .shell-backdrop {
   display: none;
 }

@@ -108,8 +108,16 @@ type RunCounts = Record<string, number>;
 
 export interface EmployeeCard {
   employee_id: number;
+  name_hash: string;
+  name_suffix: string;
   role: string;
   status: string;
+  responsibility_hash: string;
+  responsibility_len: number;
+  approval_policy_keys: string[];
+  approval_policy_count: number;
+  memory_policy_keys: string[];
+  memory_policy_count: number;
   instance_count: number;
   task_counts: TaskCounts;
   run_counts: RunCounts;
@@ -124,6 +132,9 @@ export interface InstanceCard {
   woc_instance_id: string | null;
   bound_employee_ids: number[];
   active_binding_count: number;
+  binding_scopes: Record<string, number>;
+  permission_keys: string[];
+  permission_count: number;
   task_counts: TaskCounts;
   run_counts: RunCounts;
   latest_run_id: number | null;
@@ -171,7 +182,8 @@ export interface CustomerCard {
 }
 export interface KnowledgeDocument {
   document_id: number;
-  title: string;
+  title_hash: string;
+  title_suffix: string;
   source_path_hash: string;
   content_hash: string;
   chunk_count: number;
@@ -254,6 +266,10 @@ function pickCounts(v: unknown): Record<string, number> {
   return out;
 }
 
+function pickStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+}
+
 function pickDashboard(v: unknown): ConsolePayload['dashboard'] {
   if (!v || typeof v !== 'object') return null;
   const out: Record<string, number | string | number[]> = {};
@@ -266,10 +282,20 @@ function pickDashboard(v: unknown): ConsolePayload['dashboard'] {
 }
 
 function pickEmployee(v: any): EmployeeCard {
+  const approvalPolicyKeys = pickStringArray(v?.approval_policy_keys);
+  const memoryPolicyKeys = pickStringArray(v?.memory_policy_keys);
   return {
     employee_id: num(v?.employee_id) ?? 0,
+    name_hash: str(v?.name_hash) ?? '',
+    name_suffix: str(v?.name_suffix) ?? '',
     role: str(v?.role) ?? '',
     status: str(v?.status) ?? '',
+    responsibility_hash: str(v?.responsibility_hash) ?? '',
+    responsibility_len: num(v?.responsibility_len) ?? 0,
+    approval_policy_keys: approvalPolicyKeys,
+    approval_policy_count: num(v?.approval_policy_count) ?? approvalPolicyKeys.length,
+    memory_policy_keys: memoryPolicyKeys,
+    memory_policy_count: num(v?.memory_policy_count) ?? memoryPolicyKeys.length,
     instance_count: num(v?.instance_count) ?? 0,
     task_counts: pickCounts(v?.task_counts),
     run_counts: pickCounts(v?.run_counts),
@@ -286,6 +312,9 @@ function pickInstance(v: any, wocId: (h: unknown) => string | null): InstanceCar
       ? v.bound_employee_ids.filter((x: unknown) => typeof x === 'number')
       : [],
     active_binding_count: num(v?.active_binding_count) ?? 0,
+    binding_scopes: pickCounts(v?.binding_scopes),
+    permission_keys: pickStringArray(v?.permission_keys),
+    permission_count: num(v?.permission_count) ?? pickStringArray(v?.permission_keys).length,
     task_counts: pickCounts(v?.task_counts),
     run_counts: pickCounts(v?.run_counts),
     latest_run_id: num(v?.latest_run_id),
@@ -346,7 +375,8 @@ function pickKnowledge(v: any): KnowledgeSummary | null {
     chunk_count: num(v.chunk_count) ?? 0,
     documents: docs.map((d: any) => ({
       document_id: num(d?.document_id) ?? 0,
-      title: str(d?.title) ?? '',
+      title_hash: str(d?.title_hash) ?? '',
+      title_suffix: str(d?.title_suffix) ?? '',
       source_path_hash: str(d?.source_path_hash) ?? '',
       content_hash: str(d?.content_hash) ?? '',
       chunk_count: num(d?.chunk_count) ?? 0,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api, appProfile } from '../api';
+import { api, appProfile, type InstanceWithStatus } from '../api';
 import { useUI } from '../ui';
 import { useAuth } from '../auth';
 import { useInstances } from '../AppShell';
@@ -138,6 +138,65 @@ const MenuIcon = (
     <path d="M4 6h16M4 12h16M4 18h16" />
   </svg>
 );
+
+function seedOf(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function aiRoleFor(inst?: InstanceWithStatus): string {
+  if (!inst) return '未绑定 AI 员工';
+  const roles = ['售前 AI', '售后 AI', '复购 AI', '群运营 AI'];
+  return roles[seedOf(inst.id) % roles.length];
+}
+
+function aiContextFor(inst?: InstanceWithStatus) {
+  const n = seedOf((inst?.id || 'demo') + ':ctx');
+  const stages = ['新客咨询', '比价犹豫', '售后跟进', '复购唤醒'];
+  const risk = inst?.proxyEnabled === false ? '高风险：代理未启用' : inst?.wechat.phase === 'error' ? '中风险：应用安装异常' : '安全：仅建议回复，人工确认后发送';
+  return {
+    stage: stages[n % stages.length],
+    intent: 48 + (n % 47),
+    risk,
+    decision: ['建议先补充商品卖点，再引导留资', '检测到售后语境，建议先安抚再确认订单信息', '客户可能在比价，建议给出差异化权益', '适合发送复购优惠提醒，需人工确认'][n % 4],
+  };
+}
+
+function AiWorkbench({ inst, onTakeControl }: { inst?: InstanceWithStatus; onTakeControl: () => void }) {
+  const ctx = aiContextFor(inst);
+  return (
+    <aside className="iv-ai-workbench">
+      <div className="iv-ai-topline">AI 工作台</div>
+      <div className="iv-ai-title">{aiRoleFor(inst)}</div>
+      <div className="iv-ai-sub">实例：{inst?.name || '—'}</div>
+
+      <div className="iv-ai-panel">
+        <span>当前客户画像</span>
+        <b>{ctx.stage}</b>
+        <small>意向分 {ctx.intent}/100 · 画像来自安全字段/本地演示，不显示聊天正文</small>
+      </div>
+      <div className="iv-ai-panel">
+        <span>安全状态</span>
+        <b className={ctx.risk.startsWith('高风险') ? 'danger' : ''}>{ctx.risk}</b>
+        <small>发送、改备注、群操作默认需要人工确认</small>
+      </div>
+      <div className="iv-ai-panel">
+        <span>AI 判断</span>
+        <b>{ctx.decision}</b>
+        <small>待确认动作会进入 AI 员工中心，不在此处自动执行</small>
+      </div>
+
+      <div className="iv-ai-actions">
+        <button className="btn btn-primary" onClick={onTakeControl}>接管当前实例</button>
+        <button className="btn" disabled title="后续接人审 API；当前不触发真实微信动作">确认建议</button>
+      </div>
+    </aside>
+  );
+}
 
 export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { id } = useParams<{ id: string }>();
@@ -1018,8 +1077,9 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
           </div>
         </div>
       ) : (
-        <div className="iv-stage iv-stage--vnc">
-          <div className="iv-canvas">
+        <div className="iv-stage iv-stage--vnc iv-stage--with-ai">
+          <div className="iv-vnc-main">
+            <div className="iv-canvas">
           {/* 切勿给本 iframe 加 key（如 key={id}）：那会让切换实例时 React 重挂 iframe（先删旧元素再建新元素），
               旧元素被删时 ws 未必干净关闭 → 实例服务端残留半开连接 → 回到该实例再开新 ws 时新旧并存把 Xvnc 卡死
               （刷新都救不了、要重启容器）。无 key 时切实例只改 src，浏览器会“导航”iframe：旧文档 unload 干净关闭旧 ws，
@@ -1241,7 +1301,7 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
           )}
           </div>
 
-          {inputMode === 'forward' && (
+            {inputMode === 'forward' && (
             <div className="iv-imebar">
               <textarea
                 className="iv-imebar-input"
@@ -1265,6 +1325,8 @@ export default function InstanceView({ onOpenMenu }: { onOpenMenu: () => void })
               </button>
             </div>
           )}
+          </div>
+          <AiWorkbench inst={inst} onTakeControl={takeControl} />
         </div>
       )}
     </div>

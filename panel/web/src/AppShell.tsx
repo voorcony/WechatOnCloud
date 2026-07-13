@@ -8,6 +8,7 @@ import { getThemeMode, applyThemeMode, nextThemeMode, resolveDark, type ThemeMod
 import InstanceView from './pages/Desktop';
 import Admin from './pages/Admin';
 import AiEmployeeCenter, { AiEmployeeIcon } from './pages/AiEmployeeCenter';
+import MonitorWall from './pages/MonitorWall';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -60,6 +61,12 @@ const Icon = {
   home: (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /><path d="M9.5 20v-6h5v6" />
+    </svg>
+  ),
+  monitor: (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="14" rx="2.5" />
+      <path d="M8 21h8M12 18v3M7 9h4M13 9h4M7 13h4M13 13h4" />
     </svg>
   ),
   gear: (
@@ -140,6 +147,7 @@ export default function AppShell() {
           <Routes>
             <Route path="/" element={<HomeView onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
+            <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
             <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -159,17 +167,6 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
   const loc = useLocation();
   const isAdmin = user?.role === 'admin';
   const go = (p: string) => nav(p);
-
-  // 有新版时在「管理」入口点个红点（仅管理员，因为升级面板需管理员在宿主操作）。
-  // 依赖 loc.pathname：导航时复查一次（服务端有缓存、开销极小），保证刚启动时首检完成后红点能及时出现。
-  const [hasUpdate, setHasUpdate] = useState(false);
-  useEffect(() => {
-    if (!isAdmin) return;
-    api
-      .getVersion()
-      .then((v) => setHasUpdate(!!v.hasUpdate))
-      .catch(() => {});
-  }, [isAdmin, loc.pathname]);
 
   return (
     <aside className="sidebar">
@@ -196,6 +193,14 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
           <span className="sb-ic">{AiEmployeeIcon}</span>
           {!collapsed && <span className="sb-label">AI 员工</span>}
         </button>
+        <button
+          className={'sb-item' + (loc.pathname === '/monitor' ? ' on' : '')}
+          onClick={() => go('/monitor')}
+          title="监控墙"
+        >
+          <span className="sb-ic">{Icon.monitor}</span>
+          {!collapsed && <span className="sb-label">监控墙</span>}
+        </button>
       </nav>
 
       {!collapsed && <div className="sb-section">实例</div>}
@@ -221,14 +226,10 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
         <button
           className={'sb-item' + (loc.pathname === '/admin' ? ' on' : '')}
           onClick={() => go('/admin')}
-          title={isAdmin && hasUpdate ? '管理 · 有新版本可用' : isAdmin ? '管理' : '设置'}
+          title={isAdmin ? '管理' : '设置'}
         >
-          <span className="sb-ic">
-            {Icon.gear}
-            {isAdmin && hasUpdate && <span className="sb-updot" />}
-          </span>
+          <span className="sb-ic">{Icon.gear}</span>
           {!collapsed && <span className="sb-label">{isAdmin ? '管理' : '设置'}</span>}
-          {!collapsed && isAdmin && hasUpdate && <span className="sb-updot-text">新版</span>}
         </button>
         <button
           className="sb-item"

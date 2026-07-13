@@ -249,8 +249,8 @@ app.get('/api/auth/me', async (req, reply) => {
   return { user: publicUser(u) };
 });
 
-// ---------- 版本与更新检测 ----------
-// 当前构建版本 + 缓存的「最新版」检测结果（后台每 6h 查一次 Docker Hub/GHCR）。任何登录用户可读。
+// ---------- 版本信息 ----------
+// 当前 Voorcony 构建版本。任何登录用户可读。
 app.get('/api/version', async (req, reply) => {
   if (!requireAuth(req, reply)) return;
   ensureChecked(); // 刚启动还没首检时，触发一次后台检查（不阻塞本次响应）
