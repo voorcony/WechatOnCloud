@@ -216,6 +216,7 @@ export interface AiBindChannel {
   created_at: string | null;
   updated_at: string | null;
 }
+export type AiSafeSummary = Record<string, number | string | boolean | null | Record<string, number>>;
 export interface AiConsolePayload {
   found: boolean;
   dashboard: Record<string, number | string | number[]> | null;
@@ -232,6 +233,11 @@ export interface AiConsolePayload {
     counts: Record<string, number>;
     channels: AiBindChannel[];
   } | null;
+  service_status_summary: AiSafeSummary | null;
+  vision_status_summary: AiSafeSummary | null;
+  approval_status_summary: AiSafeSummary | null;
+  send_status_summary: AiSafeSummary | null;
+  customer_status_summary: AiSafeSummary | null;
 }
 // ---------- AI 员工中心（PR5：可编辑人格 + 自动回复策略写路径） ----------
 // 后端命令缺失 / 未部署时统一返回 { ok:false, mode:'unavailable' }，前端 inline 提示、不假成功。
