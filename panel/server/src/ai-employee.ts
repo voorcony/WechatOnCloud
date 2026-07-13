@@ -192,13 +192,26 @@ export interface KnowledgeDocument {
   title_hash: string;
   title_suffix: string;
   source_path_hash: string;
+  source_path_suffix: string;
   content_hash: string;
   chunk_count: number;
   updated_at: string | null;
+  enabled: boolean | null;
+  version: number | null;
+  group_key: string | null;
+}
+export interface KnowledgeGroup {
+  group_key: string;
+  document_count: number;
+  chunk_count: number;
 }
 export interface KnowledgeSummary {
   document_count: number;
   chunk_count: number;
+  enabled_count: number | null;
+  disabled_count: number | null;
+  group_count: number | null;
+  groups: KnowledgeGroup[];
   documents: KnowledgeDocument[];
 }
 
@@ -386,14 +399,28 @@ function pickKnowledge(v: any): KnowledgeSummary | null {
   return {
     document_count: num(v.document_count) ?? 0,
     chunk_count: num(v.chunk_count) ?? 0,
+    enabled_count: num(v.enabled_count),
+    disabled_count: num(v.disabled_count),
+    group_count: num(v.group_count),
+    groups: Array.isArray(v.groups)
+      ? v.groups.map((g: any) => ({
+          group_key: str(g?.group_key) ?? '',
+          document_count: num(g?.document_count) ?? 0,
+          chunk_count: num(g?.chunk_count) ?? 0,
+        }))
+      : [],
     documents: docs.map((d: any) => ({
       document_id: num(d?.document_id) ?? 0,
       title_hash: str(d?.title_hash) ?? '',
       title_suffix: str(d?.title_suffix) ?? '',
       source_path_hash: str(d?.source_path_hash) ?? '',
+      source_path_suffix: str(d?.source_path_suffix) ?? '',
       content_hash: str(d?.content_hash) ?? '',
       chunk_count: num(d?.chunk_count) ?? 0,
       updated_at: str(d?.updated_at),
+      enabled: typeof d?.enabled === 'boolean' ? d.enabled : null,
+      version: num(d?.version),
+      group_key: str(d?.group_key),
     })),
   };
 }
@@ -477,7 +504,7 @@ function filterConsole(raw: any, hashToId: Map<string, string> | null): ConsoleP
     recent_runs: recentRuns,
     pending: raw?.pending && typeof raw.pending === 'object' ? pickCounts(raw.pending) : null,
     customer_cards: customerCards,
-    knowledge_summary: pickKnowledge(raw?.knowledge_summary),
+    knowledge_summary: pickKnowledge(raw?.knowledge_admin) ?? pickKnowledge(raw?.knowledge_summary),
     bind_panel: bindPanel,
     service_status_summary: pickSafeSummary(raw?.service_status_summary),
     vision_status_summary: pickSafeSummary(raw?.vision_status_summary),

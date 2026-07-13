@@ -183,13 +183,26 @@ export interface AiKnowledgeDocument {
   title_hash: string;
   title_suffix: string;
   source_path_hash: string;
+  source_path_suffix: string;
   content_hash: string;
   chunk_count: number;
   updated_at: string | null;
+  enabled: boolean | null;
+  version: number | null;
+  group_key: string | null;
+}
+export interface AiKnowledgeGroup {
+  group_key: string;
+  document_count: number;
+  chunk_count: number;
 }
 export interface AiKnowledgeSummary {
   document_count: number;
   chunk_count: number;
+  enabled_count: number | null;
+  disabled_count: number | null;
+  group_count: number | null;
+  groups: AiKnowledgeGroup[];
   documents: AiKnowledgeDocument[];
 }
 export interface AiKnowledgeImportResponse {
