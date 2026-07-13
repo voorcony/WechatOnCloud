@@ -935,10 +935,32 @@ function ServiceHealthCard({ resp, runs, actionPlan }: { resp: AiEmployeeService
             {runs?.mode === 'real' && runs.runs.runs.length === 0 && (
               <div className="safe-note" style={{ marginTop: 12 }}>暂无 service_lifecycle 运行记录。</div>
             )}
+            {actionPlan && <ServiceActionPlanCard plan={actionPlan} />}
           </>
         ) : (
           <div className="safe-note">AI 员工服务 health 接口未配置或不可用；本卡只读，不影响现有 console 数据。</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+function ServiceActionPlanCard({ plan }: { plan: AiServiceActionPlanResponse }) {
+  return (
+    <div className="safe-note" style={{ marginTop: 12 }}>
+      <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <b>服务控制预案</b>
+        <span className="chip warn">dry-run disabled</span>
+        {(['start', 'stop', 'restart'] as const).map((a) => (
+          <button key={a} className="btn" disabled title="当前版本只展示预案，不执行写操作">{a}</button>
+        ))}
+      </div>
+      <div className="dim" style={{ marginTop: 8 }}>
+        当前接口只返回将会执行的计划：{plan.planned_command.slice(0, 3).join(' ')} …；正式启用前必须补二次确认、审计日志和生产 E2E。
+      </div>
+      <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
+        {plan.safety_checks.slice(0, 4).map((x) => <span key={x} className="chip outline">{x}</span>)}
       </div>
     </div>
   );
