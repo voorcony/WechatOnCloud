@@ -67,6 +67,46 @@ AI 员工     /ai-employees  —— AI 员工中心
 - 宽屏右侧新增 AI 上下文工作台：AI 员工身份、当前客户画像、安全状态、AI 判断/待确认动作。
 - 当前工作台使用安全字段 + 本地稳定 fallback，暂无真实上下文字段时不展示聊天正文。
 
+## 信息架构（PR2：AI 员工详情产品化）
+
+PR2 把 `/ai-employees` 从「数据表 / 卡片集合」升级成真正的 **AI 员工管理中心**：像管理真实客服 / SCRM 团队一样管理 AI 员工，而不是一堆指标。设计参考 Intercom（客户侧边栏 / AI 建议）、Gorgias·Zendesk（员工效率 / 待处理 / 权限边界）、Linear（高密度列表 + detail pane + 状态 badges）、SCRM（客户阶段 / 标签 / 归属员工）。
+
+### 归一化 ViewModel
+
+真实模式（`/api/ai-employees/console` 的 `mode="real"`）与本地演示 fallback 都先归一化成同一套 `EmployeeVM / CustomerVM / RunVM / KnowledgeVM / PendingVM`，因此名册、详情、各 tab 组件对两种来源完全一致，只是数据源不同：
+
+- 真实模式：`buildRealVM()` 按 `bound_employee_ids` 把 `instance_cards` 挂到员工、按实例 hash 把 `customer_cards` 归属到员工、按 `employee_id` 收敛 `recent_runs`；权限键从员工绑定的实例 `permission_keys` 聚合去重。
+- 演示模式：`buildDemoVM()` 按 index 把可见实例分配到岗位形成 1~4 个 demo 员工，deterministic（`seedOf` 派生）不跳动；派生出的 name/responsibility「指纹」为 `fakeHash()` 合成，不含任何真实字段。
+
+### Tabs（产品化导航）
+
+```text
+员工总览  overview   —— 员工名册（左）+ 员工详情（右）
+客户画像  customers  —— 风险筛选 + 意向排序的客户卡
+知识库    knowledge  —— 导入 Markdown + 文档 / 切片 / 状态表
+待确认    pending    —— 只读计数 + 脱敏草稿（按钮 disabled，不触发真实动作）
+绑定秘书  bind       —— 一次性绑定二维码 + 控制通道表
+运行记录  runs       —— 全员运行时间线（脱敏摘要）
+```
+
+侧栏 `?tab=customers` / `?tab=pending` 及总控台的 `?tab=bind` / `?tab=knowledge` 直达仍有效（段 key 保留）。
+
+### 员工总览 = 名册 + 详情 pane
+
+- **左·名册**：员工头像（岗位色 + emoji）、姓名（`岗位助理 ···name_suffix`）、岗位 badge、状态 badge（在岗 / 暂停 / 异常）、负责微信 / 负责客户 / 待确认计数。列表 + detail pane 布局，窄屏降级为单列。
+- **右·详情**：
+  - **身份人格**：岗位、`name_suffix` / `name_hash` 前缀、快捷指标（负责微信 / 客户 / 运行 / 待确认）。
+  - **AI 行为边界**：按岗位生成的产品文案（非员工原始职责原文）；职责只显示 `responsibility_len` + `responsibility_hash`。
+  - **权限策略**：`approval_policy_keys/count`、`memory_policy_keys/count`、操作 `permission_keys/count`，均渲染成中文 chips。
+  - **负责微信**：实例卡（命中可见实例可跳转），显示状态 / 应用 / 任务 / 运行 / `permission_count` / `binding_scopes`。
+  - **负责客户**：过滤显示该员工负责实例上的客户卡（阶段 / 意向 / 风险 / 消息 / 记忆计数）。
+  - **知识库范围（共享）**：文档 `title_suffix` / hash、`chunk_count` / 状态。
+  - **运行记录**：该员工最近运行时间线。
+
+### 安全展示约束（PR2）
+
+禁止渲染：聊天正文、回复正文、token、绑定串明文、知识库原始标题、员工原始姓名、原始职责。允许渲染：hash / suffix / count / status / keys / stage·risk·intent / 脱敏摘要。`bind_payload_text` 仅用于 `QRCode.toDataURL` 生成二维码，不以文本 / `<code>` 形式出现。知识导入 / 绑定在未接入真实数据源时按钮 disabled，接入后可用。
+
 ## 安全边界
 
 - 不新增租户/子账号/实例授权模型，继续复用 WOC `useAuth()` / `useInstances()` / 后端可见实例过滤。
