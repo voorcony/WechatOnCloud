@@ -133,6 +133,20 @@ export interface AiServiceHealthResponse {
   };
 }
 
+export interface AiServiceRunsResponse {
+  enabled: boolean;
+  mode: 'real' | 'demo_fallback';
+  reason?: 'not_configured' | 'unavailable';
+  source?: 'ai-wechat-employee';
+  runs: null | {
+    status: string;
+    employee_id: number;
+    run_type: string | null;
+    run_count: number;
+    runs: RunCard[];
+  };
+}
+
 function serviceCliPath(cfg: AiEmployeeConfig): string {
   return process.env.WOC_AI_EMPLOYEE_SERVICE_CLI || path.join(path.dirname(cfg.cli), 'woc_ai_employee_service.py');
 }
@@ -193,6 +207,66 @@ function runServiceHealthCli(cfg: AiEmployeeConfig): Promise<any> {
       },
     );
   });
+}
+
+
+function runServiceRunsCli(cfg: AiEmployeeConfig): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const serviceCli = serviceCliPath(cfg);
+    if (!existsSync(serviceCli)) return reject(new Error('service_cli_missing'));
+    execFile(
+      cfg.python,
+      [
+        serviceCli,
+        'recent-runs',
+        '--db',
+        cfg.db,
+        '--tenant',
+        cfg.tenant,
+        '--employee-id',
+        String(cfg.secretaryId),
+        '--run-type',
+        'service_lifecycle',
+        '--limit',
+        '20',
+      ],
+      { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      (err, stdout) => {
+        if (err) return reject(new Error((err as any).killed ? 'service_runs_timeout' : 'service_runs_failed'));
+        try {
+          resolve(JSON.parse(stdout));
+        } catch {
+          reject(new Error('service_runs_bad_json'));
+        }
+      },
+    );
+  });
+}
+
+export async function buildServiceRunsResponse(log?: (code: string) => void): Promise<AiServiceRunsResponse> {
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) {
+    return { enabled: false, mode: 'demo_fallback', reason: 'not_configured', runs: null };
+  }
+  try {
+    const raw = await runServiceRunsCli(cfg);
+    const runs = Array.isArray(raw?.runs) ? raw.runs.map((r: any) => pickRun(r, () => null)) : [];
+    return {
+      enabled: true,
+      mode: 'real',
+      source: 'ai-wechat-employee',
+      runs: {
+        status: str(raw?.status) ?? 'ok',
+        employee_id: num(raw?.employee_id) ?? cfg.secretaryId,
+        run_type: str(raw?.run_type),
+        run_count: num(raw?.run_count) ?? runs.length,
+        runs,
+      },
+    };
+  } catch (e: any) {
+    log?.(e?.message || 'service_runs_failed');
+    return { enabled: false, mode: 'demo_fallback', reason: 'unavailable', runs: null };
+  }
 }
 
 export async function buildServiceHealthResponse(log?: (code: string) => void): Promise<AiServiceHealthResponse> {

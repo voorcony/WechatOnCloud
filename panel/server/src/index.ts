@@ -103,6 +103,7 @@ import {
   buildConsoleResponse,
   buildApprovalQueueResponse,
   buildServiceHealthResponse,
+  buildServiceRunsResponse,
   createAiEmployeeBindPayload,
   importAiEmployeeKnowledge,
   applyAiEmployeeTemplate,
@@ -430,6 +431,13 @@ app.get('/api/ai-employees/console', async (req, reply) => {
 });
 
 
+
+
+app.get('/api/ai-employees/service-runs', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  return buildServiceRunsResponse((code) => appendPanelLog('WARN', `[ai-employee] service-runs ${code}`));
+});
 
 app.get('/api/ai-employees/service-health', async (req, reply) => {
   const u = requireAuth(req, reply);
