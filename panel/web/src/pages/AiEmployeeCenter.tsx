@@ -765,31 +765,46 @@ function EmployeeWorkspace({
   return (
     <div>
       <div className="agent-grid">
-        {vm.employees.map((e) => (
-          <button
-            key={e.key}
-            className={'agent-card' + (selected && e.key === selected.key ? ' active' : '')}
-            onClick={() => setSelKey(e.key)}
-          >
-            <div className="row1">
-              <div className="emoji">{ROLE_GLYPH[e.roleCn] ?? '🤖'}</div>
-              <div className="info">
-                <div className="name">{e.displayName}</div>
-                <div className="role">{e.roleCn}岗 · name ···{e.nameSuffix || '——'}</div>
+        {vm.employees.map((e) => {
+          const highRisk = e.customers.filter((c) => c.risk === 'high').length;
+          const caps = uniq([...e.permKeys, ...e.approvalKeys]).slice(0, 3);
+          return (
+            <button
+              key={e.key}
+              className={'agent-card' + (selected && e.key === selected.key ? ' active' : '')}
+              onClick={() => setSelKey(e.key)}
+            >
+              <div className="row1">
+                <div className="emoji">{ROLE_GLYPH[e.roleCn] ?? '🤖'}</div>
+                <div className="info">
+                  <div className="name">{e.displayName}</div>
+                  <div className="role">{e.roleCn}岗 · name ···{e.nameSuffix || '——'}</div>
+                </div>
+                <span className={'chip ' + statusChip(e.statusKind)} style={{ marginLeft: 'auto' }}>
+                  <span className={'dot st-' + e.statusKind} /> {e.statusText}
+                </span>
               </div>
-              <span className={'chip ' + statusChip(e.statusKind)} style={{ marginLeft: 'auto' }}>
-                <span className={'dot st-' + e.statusKind} /> {e.statusText}
-              </span>
-            </div>
-            <div className="desc">{roleBoundary(e.roleCn)}</div>
-            <div className="row2">
-              <span className="chip outline">微信 {e.instances.length}</span>
-              <span className="chip outline">客户 {e.customers.length}</span>
-              <span className="chip outline">运行 {e.totalRuns}</span>
-              {e.tasksWaiting > 0 && <span className="chip warn">待确认 {e.tasksWaiting}</span>}
-            </div>
-          </button>
-        ))}
+              <div className="desc">{roleBoundary(e.roleCn)}</div>
+              <div className="row2">
+                <span className="chip outline">微信 {e.instances.length}</span>
+                <span className="chip outline">客户 {e.customers.length}</span>
+                <span className="chip outline">运行 {e.totalRuns}</span>
+                {e.tasksWaiting > 0 && <span className="chip warn">待确认 {e.tasksWaiting}</span>}
+                {highRisk > 0 && <span className="chip danger">高风险 {highRisk}</span>}
+              </div>
+              <div className="row2" style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginTop: 2 }}>
+                {caps.length === 0 ? (
+                  <span className="chip outline">默认能力 · 敏感动作需确认</span>
+                ) : (
+                  caps.map((k) => <span key={k} className="chip accent">{keyLabel(k)}</span>)
+                )}
+                {e.permKeys.length + e.approvalKeys.length > caps.length && (
+                  <span className="chip outline">+{e.permKeys.length + e.approvalKeys.length - caps.length}</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {selected && (

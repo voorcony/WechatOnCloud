@@ -964,3 +964,94 @@
   .ai-console .ai-instance-menu { display: inline-flex; align-items: center; justify-content: center; }
   .ai-console .ai-instance-actions { justify-content: flex-start; }
 }
+
+/* ====== 对话页 /inbox：实例列表 · VNC 工作区 · 员工+客户画像 ====== */
+/* 左栏实例行：复用 .conv-item 骨架，头像换成实例图标 + 运行态小圆点 */
+.ai-console .conv-item .av.plain { background: transparent; overflow: visible; position: relative; }
+.ai-console .conv-item .av .stat {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 2px solid var(--bg-elev);
+}
+.ai-console .conv-item .av .stat.st-on { background: var(--brand); }
+.ai-console .conv-item .av .stat.st-busy { background: var(--accent); }
+.ai-console .conv-item .av .stat.st-warn { background: var(--warn); }
+.ai-console .conv-item .av .stat.st-off { background: var(--text-3); }
+
+/* 中栏 VNC 工作区 */
+.ai-console .inbox-vnc { display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--bg); }
+.ai-console .inbox-vnc .vnc-h {
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px; background: var(--bg-elev);
+}
+.ai-console .inbox-vnc .vnc-h .name { font-weight: 600; }
+.ai-console .inbox-vnc .vnc-h .sub { font-size: 12px; color: var(--text-3); }
+.ai-console .inbox-vnc .vnc-h .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.ai-console .inbox-vnc .vnc-stage {
+  flex: 1; min-height: 0; position: relative;
+  background: #05070a; margin: 12px; border-radius: var(--radius);
+  border: 1px solid #10141d; overflow: hidden; box-shadow: var(--shadow-2);
+}
+.ai-console .inbox-vnc .vnc-stage iframe {
+  position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #05070a;
+}
+/* 只读预览遮罩：拦截交互 → 引导去 /i/id 接管；不劫持滚动，仅点击进入 */
+.ai-console .inbox-vnc .vnc-cover {
+  position: absolute; inset: 0; cursor: pointer; background: transparent;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 14px;
+  opacity: 0; transition: .15s;
+}
+.ai-console .inbox-vnc .vnc-cover:hover { opacity: 1; background: linear-gradient(0deg, rgba(5,7,10,.55), rgba(5,7,10,0) 45%); }
+.ai-console .inbox-vnc .vnc-cover .hint {
+  padding: 6px 12px; border-radius: 999px; background: rgba(18,22,30,.92);
+  color: #fff; font-size: 12px; font-weight: 600; border: 1px solid rgba(255,255,255,.18);
+}
+.ai-console .vnc-live-badge {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: rgba(18,22,30,.82); color: #fff; border: 1px solid rgba(255,255,255,.16);
+}
+.ai-console .vnc-live-badge .dot { width: 6px; height: 6px; box-shadow: none; }
+.ai-console .vnc-live-badge .dot.live { background: var(--brand); animation: vncPulse 1.6s infinite; }
+@keyframes vncPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* 门禁 / 离线 空态（VNC 不可用时，模板风格说明为什么 + 唯一动作） */
+.ai-console .vnc-gate {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; text-align: center;
+  padding: 24px; color: var(--text-3); background: var(--bg-soft);
+}
+.ai-console .vnc-gate .blob { font-size: 34px; }
+.ai-console .vnc-gate .gt { font-size: 14px; font-weight: 600; color: var(--text-2); }
+.ai-console .vnc-gate .gs { font-size: 12px; max-width: 320px; line-height: 1.6; }
+
+/* ====== 监控墙 /monitor：VNC 缩略预览条 ====== */
+.ai-console .monitor-vnc {
+  position: relative; height: 152px; background: #05070a;
+  border-bottom: 1px solid var(--line); overflow: hidden;
+}
+.ai-console .monitor-vnc iframe {
+  position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+  background: #05070a; pointer-events: none;
+}
+/* 点击缩略 → 进入实例接管 */
+.ai-console .monitor-vnc .vnc-cover { position: absolute; inset: 0; cursor: pointer; background: transparent; }
+.ai-console .monitor-vnc .vnc-cover:hover { box-shadow: inset 0 0 0 2px var(--brand); }
+.ai-console .monitor-vnc-off,
+.ai-console .monitor-vnc-idle {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; color: var(--text-3);
+  background: var(--bg-soft); font-size: 12px; text-align: center; padding: 12px;
+}
+.ai-console .monitor-vnc-idle { cursor: pointer; }
+.ai-console .monitor-vnc-idle:hover { background: var(--bg-hover); color: var(--text-2); }
+.ai-console .monitor-vnc-idle .ib { font-size: 26px; opacity: .8; }
+.ai-console .monitor-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-console .monitor-wall-grid.cols2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ai-console .monitor-wall-grid.cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .ai-console .monitor-wall-grid,
+  .ai-console .monitor-wall-grid.cols2,
+  .ai-console .monitor-wall-grid.cols3 { grid-template-columns: 1fr; }
+}
