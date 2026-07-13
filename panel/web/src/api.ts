@@ -373,6 +373,36 @@ export interface AiAutoReplyDraft {
   guardrails: string[]; // refund | ban | payment | cheat | link | large_order | complaint
 }
 
+
+export interface AiServiceHealthPayload {
+  status: string;
+  service_state: string;
+  pid_alive: boolean;
+  healthy: boolean;
+  last_iteration: number | null;
+  last_poll_at: string | null;
+  vision_status: string;
+  recent_ocr: Record<string, number | string | boolean | null>;
+  recent_reply: Record<string, number | string | boolean | null>;
+  recent_send: Record<string, number | string | boolean | null>;
+  last_error_present: boolean;
+  last_error_hash: string | null;
+  log_summary: Record<string, number | string | boolean | null>;
+}
+export type AiEmployeeServiceHealthResponse =
+  | {
+      enabled: false;
+      mode: 'demo_fallback';
+      reason: 'not_configured' | 'unavailable';
+      health: null;
+    }
+  | {
+      enabled: true;
+      mode: 'real';
+      source: 'ai-wechat-employee';
+      health: AiServiceHealthPayload;
+    };
+
 export type AiEmployeeConsoleResponse =
   | {
       enabled: false;
@@ -433,6 +463,7 @@ export const api = {
   // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
   aiEmployeeApprovalQueue: () => req<AiEmployeeApprovalQueueResponse>('/api/ai-employees/approval-queue'),
+  aiEmployeeServiceHealth: () => req<AiEmployeeServiceHealthResponse>('/api/ai-employees/service-health'),
   createAiEmployeeBind: () => req<AiBindPayloadResponse>('/api/ai-employees/bind', { method: 'POST' }),
   importAiEmployeeKnowledge: (title: string, markdown: string) =>
     req<AiKnowledgeImportResponse>('/api/ai-employees/knowledge/import', {
