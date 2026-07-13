@@ -104,6 +104,7 @@ import {
   buildApprovalQueueResponse,
   buildServiceHealthResponse,
   buildServiceRunsResponse,
+  buildServiceActionPlan,
   createAiEmployeeBindPayload,
   importAiEmployeeKnowledge,
   applyAiEmployeeTemplate,
@@ -432,6 +433,14 @@ app.get('/api/ai-employees/console', async (req, reply) => {
 
 
 
+
+
+app.post('/api/ai-employees/service-action', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  const action = (req.body as any)?.action;
+  return buildServiceActionPlan(action);
+});
 
 app.get('/api/ai-employees/service-runs', async (req, reply) => {
   const u = requireAuth(req, reply);
