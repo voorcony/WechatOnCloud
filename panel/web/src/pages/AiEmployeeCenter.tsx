@@ -37,12 +37,6 @@ import { InstanceIcon } from '../AppIcon';
 //   绝不渲染聊天正文 / 回复正文 / token / 绑定串明文 / 知识库原始标题 / 员工原始姓名 / 原始职责。
 //   一次性绑定串仅用于二维码生成（QRCode.toDataURL），不以文本 / <code> 形式出现。
 
-const MenuIcon = (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M4 6h16M4 12h16M4 18h16" />
-  </svg>
-);
-
 // 侧栏同款「AI 员工」图标（机器人/团队），供 AppShell 复用。
 export const AiEmployeeIcon = (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -668,102 +662,83 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const ready = loaded && probed;
 
   return (
-    <div className="ws-page ai-page-wrap">
-      <header className="ws-head">
-        <button className="ws-menu" onClick={onOpenMenu} aria-label="菜单">
-          {MenuIcon}
-        </button>
-        <span className="ws-title">AI 员工中心</span>
-        <span className={'tag' + (isAdmin ? '' : ' tag-muted')} style={{ marginLeft: 'auto' }}>
-          {isAdmin ? '管理员 · 全部实例' : '子账号 · 授权实例'}
-        </span>
-      </header>
-
-      <div className="content ai-page">
-        <section className="ai-hero">
-          <div className="ai-hero-title">AI 员工管理中心 · 像管理团队一样管理 AI</div>
-          <div className="ai-hero-flow">身份人格 → 权限边界 → 负责微信 → 负责客户 → 知识库 → 运行记录</div>
-          <div className="ai-hero-scope">
-            每个 AI 员工的可操作范围 = 当前账号在云微已有授权下可见的实例。管理员隐式拥有全部实例；子账号只看到被授权实例。
-          </div>
-        </section>
-
-        {probed &&
-          (real ? (
-            <div className="ai-srcbar ai-srcbar-real">
-              <span className="ai-srcdot" /> 已接入真实 AI 员工数据 · 来源 ai-wechat-employee（只读，已按你可见实例过滤）
-            </div>
-          ) : (
-            <div className="ai-warn">
-              当前未配置 AI 员工数据源
-              {resp && resp.mode === 'demo_fallback' && resp.reason === 'cannot_enforce_instance_filter'
-                ? '（无法按实例过滤，已对子账号回退）'
-                : ''}
-              ，正在展示本地演示数据。实例名称与在线状态为真实值，员工 / 客户 / 运行为占位演示。
-            </div>
-          ))}
-
-        <div className="ai-action-grid">
-          <button className="ai-action-card primary" onClick={() => setSeg('bind')}>
-            <span className="ai-action-ic">📲</span>
-            <b>扫码绑定秘书</b>
-            <span>生成一次性绑定码，把大秘书接入云微信实例</span>
-          </button>
-          <button className="ai-action-card" onClick={() => setSeg('knowledge')}>
-            <span className="ai-action-ic">📚</span>
-            <b>导入知识库</b>
-            <span>商品、售后、优惠话术变成 AI 员工可检索知识</span>
-          </button>
-          <button className="ai-action-card" onClick={() => setSeg('customers')}>
-            <span className="ai-action-ic">👥</span>
-            <b>查看客户画像</b>
-            <span>按会话沉淀阶段、风险、意向和记忆计数</span>
-          </button>
+    <div>
+      <div className="page-h">
+        <div>
+          <h1>AI 员工</h1>
+          <p>
+            像管理团队一样管理 AI：身份人格 → 权限边界 → 负责微信 → 负责客户 → 知识库 → 运行记录。
+            每个 AI 员工的可操作范围 = 当前账号在云微授权下可见的实例；管理员看全部，子账号只看被授权实例。
+          </p>
         </div>
-
-        <div className="ai-kpis">
-          {kpis.map((k) => (
-            <div key={k.label} className={'ai-kpi' + (k.tone ? ' ai-kpi-' + k.tone : '')}>
-              <span className="ai-kpi-val">{k.value}</span>
-              <span className="ai-kpi-lbl">{k.label}</span>
-            </div>
-          ))}
+        <div className="act">
+          <button className="btn" onClick={() => setSeg('knowledge')}>📚 导入知识库</button>
+          <button className="btn primary" onClick={() => setSeg('bind')}>📲 扫码绑定秘书</button>
         </div>
-
-        <div className="ai-tabs" role="tablist">
-          {SEGMENTS.map((s) => (
-            <button
-              key={s.key}
-              role="tab"
-              aria-selected={seg === s.key}
-              className={'ai-tab' + (seg === s.key ? ' on' : '')}
-              onClick={() => setSeg(s.key)}
-            >
-              {s.label}
-              {s.key === 'pending' && vm.pending.total > 0 && <span className="ai-tab-badge">{vm.pending.total}</span>}
-            </button>
-          ))}
-        </div>
-
-        {empty ? (
-          <EmptyBinds isAdmin={isAdmin} onManage={() => nav('/admin')} />
-        ) : !ready ? (
-          <div className="ai-loading">加载可见实例…</div>
-        ) : (
-          <div className="ai-panel">
-            {seg === 'overview' && (
-              <EmployeeWorkspace vm={vm} demo={!real} onOpenInstance={(id) => nav(`/i/${id}`)} onGotoTab={setSeg} />
-            )}
-            {seg === 'customers' && <CustomerBoard customers={vm.customers} demo={!real} />}
-            {seg === 'knowledge' && <KnowledgePanel real={real} knowledge={vm.knowledge} onImported={loadConsole} />}
-            {seg === 'tools' && <ToolsPanel vm={vm} demo={!real} />}
-            {seg === 'pending' && <PendingBoard pending={vm.pending} demo={!real} />}
-            {seg === 'bind' && <BindPanel real={real} />}
-            {seg === 'runs' && <RunLog runs={vm.runs} demo={!real} />}
-            {seg === 'settings' && <SettingsPanel resp={resp} real={!!real} vm={vm} instanceCount={instances.length} isAdmin={isAdmin} />}
-          </div>
-        )}
       </div>
+
+      {probed &&
+        (real ? (
+          <div className="src-note real">
+            <span className="d" /> 已接入真实 AI 员工数据 · 来源 ai-wechat-employee（只读，已按你可见实例过滤）
+          </div>
+        ) : (
+          <div className="src-note demo">
+            <span className="d" /> 演示数据：当前未配置 AI 员工数据源
+            {resp && resp.mode === 'demo_fallback' && resp.reason === 'cannot_enforce_instance_filter'
+              ? '（无法按实例过滤，已对子账号回退）'
+              : ''}
+            。实例名称与在线状态为真实值，员工 / 客户 / 运行为占位演示。
+          </div>
+        ))}
+
+      <div className="kpi-grid k6">
+        {kpis.map((k) => (
+          <div key={k.label} className="kpi">
+            <div className="label">{k.label}</div>
+            <div className="value">{k.value}</div>
+            <div className={'delta' + (k.tone === 'danger' ? ' down' : k.tone === 'warn' ? ' warn' : ' muted')}>
+              {k.tone === 'danger' ? '需处理' : k.tone === 'warn' ? '待确认' : 'AI 私域团队'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
+        {SEGMENTS.map((s) => (
+          <button
+            key={s.key}
+            role="tab"
+            aria-selected={seg === s.key}
+            className={'tab' + (seg === s.key ? ' active' : '')}
+            onClick={() => setSeg(s.key)}
+          >
+            {s.label}
+            {s.key === 'pending' && vm.pending.total > 0 && <span className="num">{vm.pending.total}</span>}
+          </button>
+        ))}
+      </div>
+
+      {empty ? (
+        <div style={{ marginTop: 16 }}>
+          <EmptyBinds isAdmin={isAdmin} onManage={() => nav('/admin')} />
+        </div>
+      ) : !ready ? (
+        <div className="loading">加载可见实例…</div>
+      ) : (
+        <div style={{ marginTop: 16 }}>
+          {seg === 'overview' && (
+            <EmployeeWorkspace vm={vm} demo={!real} onOpenInstance={(id) => nav(`/i/${id}`)} onGotoTab={setSeg} />
+          )}
+          {seg === 'customers' && <CustomerBoard customers={vm.customers} demo={!real} />}
+          {seg === 'knowledge' && <KnowledgePanel real={real} knowledge={vm.knowledge} onImported={loadConsole} />}
+          {seg === 'tools' && <ToolsPanel vm={vm} demo={!real} />}
+          {seg === 'pending' && <PendingBoard pending={vm.pending} demo={!real} />}
+          {seg === 'bind' && <BindPanel real={real} />}
+          {seg === 'runs' && <RunLog runs={vm.runs} demo={!real} />}
+          {seg === 'settings' && <SettingsPanel resp={resp} real={!!real} vm={vm} instanceCount={instances.length} isAdmin={isAdmin} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -784,40 +759,43 @@ function EmployeeWorkspace({
   const selected = vm.employees.find((e) => e.key === selKey) ?? vm.employees[0] ?? null;
 
   if (vm.employees.length === 0) {
-    return <div className="ai-note">当前可见实例上暂无已绑定的 AI 员工。请先在「绑定秘书」生成绑定码接入大秘书。</div>;
+    return <div className="safe-note">当前可见实例上暂无已绑定的 AI 员工。请先在「绑定秘书」生成绑定码接入大秘书。</div>;
   }
+  const statusChip = (k: 'on' | 'warn' | 'off') => (k === 'on' ? 'brand' : k === 'warn' ? 'warn' : 'outline');
   return (
-    <div className="ai-ws">
-      <div className="ai-ws-list">
-        <div className="ai-ws-listhead">
-          AI 员工名册 <span>{vm.employees.length}</span>
-        </div>
+    <div>
+      <div className="agent-grid">
         {vm.employees.map((e) => (
           <button
             key={e.key}
-            className={'ai-emp-item' + (selected && e.key === selected.key ? ' on' : '')}
+            className={'agent-card' + (selected && e.key === selected.key ? ' active' : '')}
             onClick={() => setSelKey(e.key)}
           >
-            <span className={'ai-emp-av ai-av-' + e.roleCn}>{ROLE_GLYPH[e.roleCn] ?? '🤖'}</span>
-            <span className="ai-emp-main">
-              <span className="ai-emp-top">
-                <span className="ai-emp-name">{e.displayName}</span>
-                <span className={'ai-status ai-status-' + e.statusKind}>{e.statusText}</span>
+            <div className="row1">
+              <div className="emoji">{ROLE_GLYPH[e.roleCn] ?? '🤖'}</div>
+              <div className="info">
+                <div className="name">{e.displayName}</div>
+                <div className="role">{e.roleCn}岗 · name ···{e.nameSuffix || '——'}</div>
+              </div>
+              <span className={'chip ' + statusChip(e.statusKind)} style={{ marginLeft: 'auto' }}>
+                <span className={'dot st-' + e.statusKind} /> {e.statusText}
               </span>
-              <span className="ai-emp-metrics">
-                <span className={'ai-role ai-role-' + e.roleCn}>{e.roleCn}</span>
-                <span className="ai-emp-metric">微信 {e.instances.length}</span>
-                <span className="ai-emp-metric">客户 {e.customers.length}</span>
-                {e.tasksWaiting > 0 && <span className="ai-emp-metric warn">待确认 {e.tasksWaiting}</span>}
-              </span>
-            </span>
-            <span className="enter-arrow">›</span>
+            </div>
+            <div className="desc">{roleBoundary(e.roleCn)}</div>
+            <div className="row2">
+              <span className="chip outline">微信 {e.instances.length}</span>
+              <span className="chip outline">客户 {e.customers.length}</span>
+              <span className="chip outline">运行 {e.totalRuns}</span>
+              {e.tasksWaiting > 0 && <span className="chip warn">待确认 {e.tasksWaiting}</span>}
+            </div>
           </button>
         ))}
       </div>
 
       {selected && (
-        <EmployeeDetail emp={selected} knowledge={vm.knowledge} demo={demo} onOpenInstance={onOpenInstance} onGotoTab={onGotoTab} />
+        <div style={{ marginTop: 16 }}>
+          <EmployeeDetail emp={selected} knowledge={vm.knowledge} demo={demo} onOpenInstance={onOpenInstance} onGotoTab={onGotoTab} />
+        </div>
       )}
     </div>
   );
@@ -837,191 +815,195 @@ function EmployeeDetail({
   onGotoTab: (s: Seg) => void;
 }) {
   return (
-    <div className="ai-emp-detail">
-      {/* 身份人格 */}
-      <div className="ai-persona">
-        <span className={'ai-persona-av ai-av-' + emp.roleCn}>{ROLE_GLYPH[emp.roleCn] ?? '🤖'}</span>
-        <div className="ai-persona-id">
-          <div className="ai-persona-name">
-            {emp.displayName}
-            <span className={'ai-status ai-status-' + emp.statusKind}>{emp.statusText}</span>
+    <div className="agent-detail">
+      {/* 左：基础信息 */}
+      <div className="side col" style={{ gap: 16 }}>
+        <div className="card">
+          <div className="card-h">
+            <div className="emoji" style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--brand-soft)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+              {ROLE_GLYPH[emp.roleCn] ?? '🤖'}
+            </div>
+            <span className="title">{emp.displayName}</span>
+            <span className={'chip ' + (emp.statusKind === 'on' ? 'brand' : emp.statusKind === 'warn' ? 'warn' : 'outline')} style={{ marginLeft: 'auto' }}>
+              <span className={'dot st-' + emp.statusKind} /> {emp.statusText}
+            </span>
           </div>
-          <div className="ai-persona-role">
-            <span className={'ai-role ai-role-' + emp.roleCn}>{emp.roleCn}岗</span>
-            <span className="ai-persona-sub">name ···{emp.nameSuffix || '——'} · hash {emp.nameHash.slice(0, 8)}</span>
+          <div className="card-b">
+            <div className="item"><span>岗位</span><span className="v">{emp.roleCn}岗</span></div>
+            <div className="item"><span>脱敏名</span><span className="v mono">···{emp.nameSuffix || '——'}</span></div>
+            <div className="item"><span>name hash</span><span className="v mono">{emp.nameHash.slice(0, 12)}</span></div>
+            <div className="item"><span>职责摘要</span><span className="v">{emp.respLen} 字 · hash {emp.respHash.slice(0, 10)}</span></div>
+            <div className="item"><span>负责微信</span><span className="v">{emp.instances.length}</span></div>
+            <div className="item"><span>负责客户</span><span className="v">{emp.customers.length}</span></div>
+            <div className="item"><span>运行</span><span className="v">{emp.totalRuns}</span></div>
+            <div className="item"><span>待确认</span><span className={'v' + (emp.tasksWaiting ? ' warn' : '')}>{emp.tasksWaiting}</span></div>
           </div>
         </div>
-        <div className="ai-persona-quick">
-          <div><b>{emp.instances.length}</b><span>负责微信</span></div>
-          <div><b>{emp.customers.length}</b><span>负责客户</span></div>
-          <div><b>{emp.totalRuns}</b><span>运行</span></div>
-          <div className={emp.tasksWaiting ? 'warn' : ''}><b>{emp.tasksWaiting}</b><span>待确认</span></div>
+
+        <div className="card">
+          <div className="card-h"><span className="title">AI 行为边界</span></div>
+          <div className="card-b">
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{roleBoundary(emp.roleCn)}</p>
+            <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>
+              原始职责与姓名不在后台展示，仅保留长度与指纹（{emp.respLen} 字 · hash {emp.respHash.slice(0, 12)}）。
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-h">
+            <span className="title">权限策略</span>
+            <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>审批 {emp.approvalCount} · 记忆 {emp.memoryCount} · 操作 {emp.permCount}</span>
+          </div>
+          <div className="card-b col" style={{ gap: 12 }}>
+            <ChipField title="审批策略" keys={emp.approvalKeys} empty="继承默认：敏感动作需人工确认" />
+            <ChipField title="记忆策略" keys={emp.memoryKeys} empty="继承默认记忆策略" />
+            <ChipField title="操作权限" keys={emp.permKeys} empty="未授予额外操作权限" />
+          </div>
         </div>
       </div>
 
-      <div className="ai-sec">
-        <div className="ai-sec-title">AI 行为边界</div>
-        <p className="ai-sec-boundary">{roleBoundary(emp.roleCn)}</p>
-        <div className="ai-sec-meta">
-          职责摘要：{emp.respLen} 字 · hash {emp.respHash.slice(0, 12)}
-          <span className="ai-card-sep">·</span> 原始职责与姓名不在后台展示，仅保留长度与指纹
-        </div>
-      </div>
+      {/* 右：人格 / 自动回复策略 / 负责微信 / 客户 / 知识库 / 运行 */}
+      <div className="col" style={{ gap: 16 }}>
+        {/* 人格配置 + 自动回复策略（PR5：可编辑） */}
+        <PersonaPolicyEditor emp={emp} demo={demo} />
 
-      {/* 权限策略 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          权限策略
-          <span className="ai-sec-count">审批 {emp.approvalCount} · 记忆 {emp.memoryCount} · 操作 {emp.permCount}</span>
+        {/* 负责微信 */}
+        <div className="card">
+          <div className="card-h">
+            <span className="title">负责微信</span>
+            <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>{emp.instances.length} 个实例</span>
+          </div>
+          <div className="card-b">
+            {emp.instances.length === 0 ? (
+              <div className="dim">尚未绑定任何可见微信实例。</div>
+            ) : (
+              <div className="col" style={{ gap: 8 }}>
+                {emp.instances.map((ins) => {
+                  const scopes = Object.entries(ins.bindingScopes).map(([k, v]) => `${keyLabel(k)}:${v}`).join(' / ');
+                  const inner = (
+                    <>
+                      <span style={{ flexShrink: 0 }}>
+                        {ins.woc ? (
+                          <InstanceIcon icon={ins.woc.icon} appType={ins.woc.appType} size={36} radius={10} />
+                        ) : (
+                          <span className="avatar accent">···{ins.suffix}</span>
+                        )}
+                      </span>
+                      <div className="grow" style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600 }}>{ins.name}</div>
+                        <div className="dim" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {ins.statusCls && <span className={'dot ' + ins.statusCls} />} {ins.statusText} · {ins.appLabel}
+                        </div>
+                        <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>
+                          任务 {ins.tasks} · 运行 {ins.runs}
+                          {ins.permissionCount > 0 && <> · 权限 {ins.permissionCount}</>}
+                          {scopes && <> · 范围 {scopes}</>}
+                        </div>
+                      </div>
+                      {ins.woc && <span className="dim">›</span>}
+                    </>
+                  );
+                  return ins.woc ? (
+                    <button
+                      key={ins.key}
+                      className="row"
+                      style={{ width: '100%', textAlign: 'left', background: 'var(--bg-soft)', border: '1px solid var(--line)', borderRadius: 12, padding: 10, cursor: 'pointer' }}
+                      onClick={() => onOpenInstance(ins.woc!.id)}
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <div key={ins.key} className="row" style={{ background: 'var(--bg-soft)', border: '1px solid var(--line)', borderRadius: 12, padding: 10 }}>
+                      {inner}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="ai-fieldgrid">
-          <ChipField title="审批策略" keys={emp.approvalKeys} empty="继承默认：敏感动作需人工确认" />
-          <ChipField title="记忆策略" keys={emp.memoryKeys} empty="继承默认记忆策略" />
-          <ChipField title="操作权限" keys={emp.permKeys} empty="未授予额外操作权限" />
-        </div>
-      </div>
 
-      {/* 人格配置 + 自动回复策略（PR5：可编辑） */}
-      <PersonaPolicyEditor emp={emp} demo={demo} />
-
-      {/* 负责微信 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          负责微信 <span className="ai-sec-count">{emp.instances.length} 个实例</span>
+        {/* 负责客户 */}
+        <div className="card">
+          <div className="card-h">
+            <span className="title">负责客户</span>
+            <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>{emp.customers.length} 位</span>
+            {emp.customers.length > 0 && (
+              <button className="btn ghost sm" onClick={() => onGotoTab('customers')}>全部客户画像 ›</button>
+            )}
+          </div>
+          <div className="card-b">
+            {emp.customers.length === 0 ? (
+              <div className="dim">暂无沉淀的客户画像。</div>
+            ) : (
+              <div className="grid-3" style={{ marginTop: 0 }}>
+                {emp.customers.slice(0, 6).map((cu) => (
+                  <CustomerCard key={cu.key} cu={cu} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        {emp.instances.length === 0 ? (
-          <div className="ai-note">尚未绑定任何可见微信实例。</div>
-        ) : (
-          <div className="ai-wxgrid">
-            {emp.instances.map((ins) => {
-              const inner = (
-                <>
-                  <div className="ai-card-head">
-                    <span className="ai-card-av">
-                      {ins.woc ? (
-                        <InstanceIcon icon={ins.woc.icon} appType={ins.woc.appType} size={36} radius={10} />
-                      ) : (
-                        <span className="ai-card-hashav">···{ins.suffix}</span>
-                      )}
-                    </span>
-                    <div className="ai-card-id">
-                      <div className="ai-card-name">{ins.name}</div>
-                      <div className="ai-card-sub">
-                        {ins.statusCls && <span className={'ai-dot ' + ins.statusCls} />} {ins.statusText} · {ins.appLabel}
+
+        {/* 知识库范围 */}
+        <div className="card">
+          <div className="card-h">
+            <span className="title">知识库范围（共享）</span>
+            <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>{knowledge.docCount} 文档 · {knowledge.chunkCount} 切片</span>
+            <button className="btn ghost sm" onClick={() => onGotoTab('knowledge')}>管理知识库 ›</button>
+          </div>
+          <div className="card-b">
+            {knowledge.docs.length === 0 ? (
+              <div className="dim">暂无知识库。可在「知识库」tab 导入 Markdown。</div>
+            ) : (
+              <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {knowledge.docs.slice(0, 6).map((d) => (
+                  <span key={d.key} className="chip outline">{d.label} · {d.chunks} 切片</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 运行记录 */}
+        <div className="card">
+          <div className="card-h">
+            <span className="title">运行记录</span>
+            <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>最近 {emp.runs.length}</span>
+            {emp.runs.length > 0 && (
+              <button className="btn ghost sm" onClick={() => onGotoTab('runs')}>全部运行记录 ›</button>
+            )}
+          </div>
+          <div className="card-b">
+            {emp.runs.length === 0 ? (
+              <div className="dim">暂无运行记录。</div>
+            ) : (
+              <div className="timeline">
+                {emp.runs.slice(0, 6).map((r) => (
+                  <div key={r.key} className="ti">
+                    <div className="d"><div className="dotline" /><div className={'p ' + r.status.cls} /></div>
+                    <div className="body">
+                      <div className="w">{r.act} <span className="dim">@{r.instName}</span></div>
+                      <div className="t">
+                        <span className={'dot ' + r.status.cls} /> {r.status.t}
+                        {r.summary && <span>· {r.summary}</span>}
+                        {r.ago && <span>· {r.ago}</span>}
                       </div>
                     </div>
-                    {ins.woc && <span className="enter-arrow">›</span>}
                   </div>
-                  <div className="ai-card-stats">
-                    任务 {ins.tasks}
-                    <span className="ai-card-sep">·</span> 运行 {ins.runs}
-                    {ins.permissionCount > 0 && (
-                      <>
-                        <span className="ai-card-sep">·</span> 权限 {ins.permissionCount}
-                      </>
-                    )}
-                    {Object.keys(ins.bindingScopes).length > 0 && (
-                      <>
-                        <span className="ai-card-sep">·</span> 范围{' '}
-                        {Object.entries(ins.bindingScopes)
-                          .map(([k, v]) => `${keyLabel(k)}:${v}`)
-                          .join(' / ')}
-                      </>
-                    )}
-                  </div>
-                </>
-              );
-              return ins.woc ? (
-                <button key={ins.key} className="ai-card ai-card-btn" onClick={() => onOpenInstance(ins.woc!.id)}>
-                  {inner}
-                </button>
-              ) : (
-                <div key={ins.key} className="ai-card">
-                  {inner}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 负责客户 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          负责客户 <span className="ai-sec-count">{emp.customers.length} 位</span>
-          {emp.customers.length > 0 && (
-            <button className="btn-text ai-sec-more" onClick={() => onGotoTab('customers')}>
-              全部客户画像 ›
-            </button>
-          )}
-        </div>
-        {emp.customers.length === 0 ? (
-          <div className="ai-note">暂无沉淀的客户画像。</div>
-        ) : (
-          <div className="ai-custgrid">
-            {emp.customers.slice(0, 6).map((cu) => (
-              <CustomerCard key={cu.key} cu={cu} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 知识库范围 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          知识库范围（共享） <span className="ai-sec-count">{knowledge.docCount} 文档 · {knowledge.chunkCount} 切片</span>
-          <button className="btn-text ai-sec-more" onClick={() => onGotoTab('knowledge')}>
-            管理知识库 ›
-          </button>
-        </div>
-        {knowledge.docs.length === 0 ? (
-          <div className="ai-note">暂无知识库。可在「知识库」tab 导入 Markdown。</div>
-        ) : (
-          <div className="ai-kbchips">
-            {knowledge.docs.slice(0, 6).map((d) => (
-              <div key={d.key} className="ai-kbchip">
-                <span className="ai-kbchip-name">{d.label}</span>
-                <span className="ai-kbchip-meta">{d.chunks} 切片 · {d.status}</span>
+                ))}
               </div>
-            ))}
+            )}
+          </div>
+        </div>
+
+        {demo && (
+          <div className="safe-note">
+            以上为演示数据（deterministic 占位）。接入真实数据源后，此处为该 AI 员工的真实身份 / 权限 / 客户 / 运行。
           </div>
         )}
       </div>
-
-      {/* 运行记录 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          运行记录 <span className="ai-sec-count">最近 {emp.runs.length}</span>
-          {emp.runs.length > 0 && (
-            <button className="btn-text ai-sec-more" onClick={() => onGotoTab('runs')}>
-              全部运行记录 ›
-            </button>
-          )}
-        </div>
-        {emp.runs.length === 0 ? (
-          <div className="ai-note">暂无运行记录。</div>
-        ) : (
-          <ul className="ai-timeline">
-            {emp.runs.slice(0, 6).map((r) => (
-              <li key={r.key} className="ai-tl-item">
-                <span className={'ai-tl-dot ' + r.status.cls} />
-                <div className="ai-tl-body">
-                  <div className="ai-tl-main">
-                    {r.act}
-                    <span className="ai-tl-inst">@{r.instName}</span>
-                  </div>
-                  <div className="ai-tl-meta">
-                    <span className={'ai-dot ' + r.status.cls} /> {r.status.t}
-                    {r.summary && <> · {r.summary}</>}
-                    {r.ago && <> · {r.ago}</>}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {demo && <div className="ai-note">以上为演示数据（deterministic 占位）。接入真实数据源后，此处为该 AI 员工的真实身份 / 权限 / 客户 / 运行。</div>}
     </div>
   );
 }
@@ -1133,216 +1115,212 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
 
   return (
     <>
-      {/* 1. 人格配置区 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          人格配置
-          <span className="ai-sec-count">显示名 · 业务域 · 岗位 · 语气 · 目标 · 禁止承诺</span>
-          <button className="btn-text ai-sec-more" disabled={busy !== ''} onClick={applyTemplate}>
-            应用游戏代练客服模板 ›
-          </button>
-        </div>
-        <div className="ai-note" style={{ marginBottom: 12 }}>
-          当前后端仅下发人格指纹（name ···{emp.nameSuffix || '——'} · hash {emp.nameHash.slice(0, 8)} · 职责 {emp.respLen} 字），
-          未开放明文编辑快照。以下表单可基于模板填充并提交到新 API 下发；不展示任何聊天正文 / 原始职责原文。
-        </div>
-        <div className="ai-form-grid">
-          <label className="ai-form-field">
-            <span className="ai-form-label">显示名 / 客服名</span>
-            <input className="input" value={persona.displayName} maxLength={60}
-              onChange={(e) => setPersona((p) => ({ ...p, displayName: e.target.value }))} placeholder="如：代练客服小助手" />
-          </label>
-          <label className="ai-form-field">
-            <span className="ai-form-label">业务域</span>
-            <input className="input" value={persona.serviceDomain} maxLength={60}
-              onChange={(e) => setPersona((p) => ({ ...p, serviceDomain: e.target.value }))} placeholder="如：游戏代练客服" />
-          </label>
-        </div>
-        <div className="ai-form-field" style={{ marginTop: 12 }}>
-          <span className="ai-form-label">岗位</span>
-          <div className="ai-choice-row">
-            {PERSONA_POSTS.map((p) => (
-              <button key={p.key} className={'ai-choice' + (persona.post === p.key ? ' on' : '')} onClick={() => setPost(p.key)}>
-                {p.label}
-              </button>
-            ))}
+      {/* 1. 人格配置 + 自动回复策略：模板 prompt-grid 两栏 */}
+      <div className="card">
+        <div className="card-h">
+          <span className="title">人格配置与自动回复策略</span>
+          <div className="row" style={{ marginLeft: 'auto', gap: 6 }}>
+            <span className="chip">模板草稿 · 不回显明文</span>
+            <button className="btn sm" disabled={busy !== ''} onClick={applyTemplate}>
+              {busy === 'template' ? '应用中…' : '应用游戏代练客服模板'}
+            </button>
           </div>
         </div>
-        <div className="ai-form-field" style={{ marginTop: 12 }}>
-          <span className="ai-form-label">语气</span>
-          <div className="ai-choice-row">
-            {PERSONA_TONES.map((t) => (
-              <button key={t.key} className={'ai-choice' + (persona.tones.includes(t.key) ? ' on' : '')} onClick={() => toggleTone(t.key)}>
-                {t.label}
-              </button>
-            ))}
+        <div className="card-b">
+          <div className="safe-note">
+            当前后端仅下发人格指纹（name ···{emp.nameSuffix || '——'} · hash {emp.nameHash.slice(0, 8)} · 职责 {emp.respLen} 字），
+            <b> 不回显明文人格 / 原始职责 / 聊天正文</b>。以下为模板化草稿，可基于模板填充并提交到 API 下发（提交 allowlist 键 + 模板文本）。
           </div>
-        </div>
-        <label className="ai-form-field" style={{ marginTop: 12 }}>
-          <span className="ai-form-label">目标（引导收集的信息）</span>
-          <textarea className="input ai-form-textarea" value={persona.goals} maxLength={2000}
-            onChange={(e) => setPersona((p) => ({ ...p, goals: e.target.value }))}
-            placeholder="如：收集游戏 / 区服 / 段位 / 目标段位 / 预算 / 时限，并沉淀客户画像" />
-        </label>
-        <label className="ai-form-field" style={{ marginTop: 12 }}>
-          <span className="ai-form-label">禁止承诺 / 红线</span>
-          <textarea className="input ai-form-textarea" value={persona.forbidden} maxLength={2000}
-            onChange={(e) => setPersona((p) => ({ ...p, forbidden: e.target.value }))}
-            placeholder="如：不承诺 100% 不封号；不提供违规外挂；不诱导索取账号 / 支付密码 / 验证码" />
-        </label>
-      </div>
 
-      {/* 2. 自动回复策略区 */}
-      <div className="ai-sec">
-        <div className="ai-sec-title">
-          自动回复策略
-          <span className={'ai-mode-badge ai-mode-' + ar.mode}>{AUTO_MODE_LABELS[ar.mode]}</span>
-        </div>
-
-        <div className="ai-toggle-row">
-          <button
-            className={'ai-switch' + (enabled ? ' on' : '')}
-            role="switch"
-            aria-checked={enabled}
-            onClick={toggleEnabled}
-          >
-            <span className="ai-switch-knob" />
-          </button>
-          <div className="ai-toggle-text">
-            <b>自动回复测试模式</b>
-            <span>关闭后 AI 只沉淀画像、不生成自动回复；开启后按下方模式处理。</span>
-          </div>
-        </div>
-
-        {enabled && (
-          <div className="ai-form-field" style={{ marginTop: 14 }}>
-            <span className="ai-form-label">模式</span>
-            <div className="ai-radio-row">
-              <button className={'ai-radio' + (ar.mode === 'suggest_only' ? ' on' : '')} onClick={() => setMode('suggest_only')}>
-                <span className="ai-radio-dot" />
-                <span className="ai-radio-body">
-                  <b>只生成建议</b>
-                  <span>AI 起草回复进入待确认队列，人工确认后才发送（推荐）。</span>
-                </span>
-              </button>
-              <button className={'ai-radio' + (autoSend ? ' on' : '')} onClick={() => setMode('auto_send_test')}>
-                <span className="ai-radio-dot" />
-                <span className="ai-radio-body">
-                  <b>测试自动发送</b>
-                  <span>仅对低风险咨询自动发送，命中人审触发词的仍转人工。</span>
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {autoSend && (
-          <div className="ai-risk-banner">
-            <span className="ai-risk-ic">⚠️</span>
-            <div>
-              <b>测试自动发送已开启 · 请谨慎</b>
-              <ul>
-                <li>仅对<b>测试实例 / 白名单会话 / 低风险咨询</b>自动发送，高风险一律转人工确认。</li>
-                <li>付款 / 退款 / 封号 / 外挂 / 外部链接 / 大额订单 / 投诉等命中人审触发词的消息进入待确认队列。</li>
-                <li>所有自动 / 人工动作都会写入 audit 审计；真实发送由后端二次 gating，前端不直接触发微信动作。</li>
-                <li>后端未就绪时不会真正开启，本页只保存策略草稿、不假装生效。</li>
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {enabled && (
-          <>
-            <div className="ai-form-field" style={{ marginTop: 14 }}>
-              <span className="ai-form-label">生效范围</span>
-              <div className="ai-choice-row">
-                {SCOPE_OPTIONS.map((s) => (
-                  <button key={s.key} className={'ai-choice' + (ar.scope === s.key ? ' on' : '')} title={s.hint}
-                    onClick={() => setAr((a) => ({ ...a, scope: s.key }))}>
-                    {s.label}
-                  </button>
-                ))}
+          <div className="prompt-grid" style={{ marginTop: 12 }}>
+            {/* 人设草稿 */}
+            <div className="prompt-pane">
+              <div className="ph"><span className="title">人设草稿</span></div>
+              <div className="body col" style={{ gap: 12 }}>
+                <label className="form-field">
+                  <span>显示名 / 客服名</span>
+                  <input className="input" value={persona.displayName} maxLength={60}
+                    onChange={(e) => setPersona((p) => ({ ...p, displayName: e.target.value }))} placeholder="如：代练客服小助手" />
+                </label>
+                <label className="form-field">
+                  <span>业务域</span>
+                  <input className="input" value={persona.serviceDomain} maxLength={60}
+                    onChange={(e) => setPersona((p) => ({ ...p, serviceDomain: e.target.value }))} placeholder="如：游戏代练客服" />
+                </label>
+                <div className="form-field">
+                  <span>岗位</span>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                    {PERSONA_POSTS.map((p) => (
+                      <button key={p.key} className={'chip' + (persona.post === p.key ? ' brand' : ' outline')} onClick={() => setPost(p.key)}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-field">
+                  <span>语气</span>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                    {PERSONA_TONES.map((t) => (
+                      <button key={t.key} className={'chip' + (persona.tones.includes(t.key) ? ' brand' : ' outline')} onClick={() => toggleTone(t.key)}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="form-field">
+                  <span>目标（引导收集的信息）</span>
+                  <textarea className="textarea" value={persona.goals} maxLength={2000}
+                    onChange={(e) => setPersona((p) => ({ ...p, goals: e.target.value }))}
+                    placeholder="如：收集游戏 / 区服 / 段位 / 目标段位 / 预算 / 时限，并沉淀客户画像" />
+                </label>
+                <label className="form-field">
+                  <span>禁止承诺 / 红线</span>
+                  <textarea className="textarea" value={persona.forbidden} maxLength={2000}
+                    onChange={(e) => setPersona((p) => ({ ...p, forbidden: e.target.value }))}
+                    placeholder="如：不承诺 100% 不封号；不提供违规外挂；不诱导索取账号 / 支付密码 / 验证码" />
+                </label>
               </div>
-              <span className="ai-form-hint">{SCOPE_OPTIONS.find((s) => s.key === ar.scope)?.hint}</span>
             </div>
 
-            <div className="ai-form-grid" style={{ marginTop: 14 }}>
-              <label className="ai-form-field">
-                <span className="ai-form-label">频率限制 · 时间窗（秒）</span>
-                <input className="input" type="number" min={0} max={3600} value={ar.rateLimitSeconds}
-                  onChange={(e) => setAr((a) => ({ ...a, rateLimitSeconds: Math.max(0, Math.min(3600, Math.floor(Number(e.target.value) || 0))) }))} />
-              </label>
-              <label className="ai-form-field">
-                <span className="ai-form-label">频率限制 · 最多条数</span>
-                <input className="input" type="number" min={1} max={100} value={ar.rateLimitCount}
-                  onChange={(e) => setAr((a) => ({ ...a, rateLimitCount: Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1))) }))} />
-              </label>
+            {/* 自动回复策略草稿 */}
+            <div className="prompt-pane">
+              <div className="ph">
+                <span className="title">自动回复策略</span>
+                <span className={'chip ' + (ar.mode === 'disabled' ? 'outline' : autoSend ? 'warn' : 'brand')} style={{ marginLeft: 'auto' }}>
+                  {AUTO_MODE_LABELS[ar.mode]}
+                </span>
+              </div>
+              <div className="body col" style={{ gap: 14 }}>
+                <div className="row" style={{ gap: 10 }}>
+                  <label className="switch">
+                    <input type="checkbox" checked={enabled} onChange={toggleEnabled} aria-label="自动回复测试模式" />
+                    <span />
+                  </label>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>自动回复测试模式</div>
+                    <div className="dim" style={{ fontSize: 12 }}>关闭后 AI 只沉淀画像、不生成自动回复；开启后按下方模式处理。</div>
+                  </div>
+                </div>
+
+                {enabled && (
+                  <div className="form-field">
+                    <span>模式</span>
+                    <div className="col" style={{ gap: 6 }}>
+                      <button className={'chip ' + (ar.mode === 'suggest_only' ? 'brand' : 'outline')} style={{ justifyContent: 'flex-start' }} onClick={() => setMode('suggest_only')}>
+                        <span className={'dot ' + (ar.mode === 'suggest_only' ? 'st-on' : 'st-off')} /> 只生成建议 · 进待确认队列，人工确认后才发送（推荐）
+                      </button>
+                      <button className={'chip ' + (autoSend ? 'warn' : 'outline')} style={{ justifyContent: 'flex-start' }} onClick={() => setMode('auto_send_test')}>
+                        <span className={'dot ' + (autoSend ? 'st-warn' : 'st-off')} /> 测试自动发送 · 仅低风险咨询自动发送，命中人审触发词仍转人工
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {autoSend && (
+                  <div className="safe-note" style={{ background: 'var(--warn-soft)', color: 'var(--warn-ink)', borderColor: 'transparent' }}>
+                    <b>⚠️ 测试自动发送已开启 · 请谨慎</b>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                      <li>仅对<b>测试实例 / 白名单会话 / 低风险咨询</b>自动发送，高风险一律转人工确认。</li>
+                      <li>付款 / 退款 / 封号 / 外挂 / 外部链接 / 大额订单 / 投诉等命中人审触发词的消息进入待确认队列。</li>
+                      <li>所有自动 / 人工动作都会写入 audit 审计；真实发送由后端二次 gating，前端不直接触发微信动作。</li>
+                      <li>后端未就绪时不会真正开启，本页只保存策略草稿、不假装生效。</li>
+                    </ul>
+                  </div>
+                )}
+
+                {enabled && (
+                  <>
+                    <div className="form-field">
+                      <span>生效范围</span>
+                      <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                        {SCOPE_OPTIONS.map((s) => (
+                          <button key={s.key} className={'chip' + (ar.scope === s.key ? ' brand' : ' outline')} title={s.hint}
+                            onClick={() => setAr((a) => ({ ...a, scope: s.key }))}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="dim" style={{ fontSize: 11 }}>{SCOPE_OPTIONS.find((s) => s.key === ar.scope)?.hint}</span>
+                    </div>
+
+                    <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+                      <label className="form-field grow">
+                        <span>频率 · 时间窗（秒）</span>
+                        <input className="input" type="number" min={0} max={3600} value={ar.rateLimitSeconds}
+                          onChange={(e) => setAr((a) => ({ ...a, rateLimitSeconds: Math.max(0, Math.min(3600, Math.floor(Number(e.target.value) || 0))) }))} />
+                      </label>
+                      <label className="form-field grow">
+                        <span>频率 · 最多条数</span>
+                        <input className="input" type="number" min={1} max={100} value={ar.rateLimitCount}
+                          onChange={(e) => setAr((a) => ({ ...a, rateLimitCount: Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1))) }))} />
+                      </label>
+                    </div>
+                    <span className="dim" style={{ fontSize: 11 }}>每客户每 {ar.rateLimitSeconds} 秒最多自动发送 {ar.rateLimitCount} 条。</span>
+                  </>
+                )}
+
+                <div className="form-field">
+                  <span>强制人审触发（命中即转人工确认）</span>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                    {GUARDRAILS.map((g) => (
+                      <button key={g.key} className={'chip' + (ar.guardrails.includes(g.key) ? ' danger' : ' outline')} onClick={() => toggleGuardrail(g.key)}>
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="safe-note">
+                  <b>安全说明</b>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                    <li>自动发送只对低风险咨询生效；付款 / 退款 / 封号 / 外挂 / 链接等进入待确认。</li>
+                    <li>所有动作写入 audit 审计；真实发送由后端 gating，本页不直接触发真实微信动作。</li>
+                    <li>无真实后端能力时不假装开启成功，仅保存本地策略草稿。</li>
+                  </ul>
+                </div>
+
+                <label className="form-field">
+                  <span>试运行判断（输入一条示例咨询，看会自动发送还是转人工）</span>
+                  <textarea className="textarea" value={sample} maxLength={500}
+                    onChange={(e) => setSample(e.target.value)}
+                    placeholder="如：王者荣耀想从黄金上到钻石，大概多少钱多久？" />
+                </label>
+                {testResult && (
+                  <div className="safe-note">
+                    <div className="row" style={{ gap: 6 }}>
+                      <span className={'dot ' + (TEST_DECISION_LABELS[testResult.decision]?.cls ?? 'st-warn')} />
+                      <b>{TEST_DECISION_LABELS[testResult.decision]?.t ?? testResult.decision}</b>
+                      <span className="dim">· 风险 {RISK_LABEL[riskOf(testResult.risk)]}</span>
+                      {testResult.matched.length > 0 && (
+                        <span className="dim">· 命中人审：{testResult.matched.map((k) => GUARDRAILS.find((g) => g.key === k)?.label ?? k).join(' / ')}</span>
+                      )}
+                    </div>
+                    {testResult.summary && <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{testResult.summary}</div>}
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="ai-form-hint">每客户每 {ar.rateLimitSeconds} 秒最多自动发送 {ar.rateLimitCount} 条。</span>
-          </>
-        )}
-
-        <div className="ai-form-field" style={{ marginTop: 14 }}>
-          <span className="ai-form-label">强制人审触发（命中即转人工确认）</span>
-          <div className="ai-choice-row">
-            {GUARDRAILS.map((g) => (
-              <button key={g.key} className={'ai-choice ai-guard' + (ar.guardrails.includes(g.key) ? ' on' : '')} onClick={() => toggleGuardrail(g.key)}>
-                {g.label}
-              </button>
-            ))}
           </div>
-        </div>
 
-        {/* 安全文案 */}
-        <div className="ai-safety">
-          <b>安全说明</b>
-          <ul>
-            <li>自动发送只对低风险咨询生效；付款 / 退款 / 封号 / 外挂 / 链接等进入待确认。</li>
-            <li>所有动作写入 audit 审计；真实发送由后端 gating，本页不直接触发真实微信动作。</li>
-            <li>无真实后端能力时不假装开启成功，仅保存本地策略草稿。</li>
-          </ul>
-        </div>
+          {notice && (
+            <div className={'src-note ' + (notice.tone === 'ok' ? 'real' : 'demo')} style={{ marginTop: 12, marginBottom: 0 }}>
+              <span className="d" /> {notice.text}
+            </div>
+          )}
 
-        {/* 试运行判断 */}
-        <div className="ai-form-field" style={{ marginTop: 14 }}>
-          <span className="ai-form-label">试运行判断（输入一条示例咨询，看会自动发送还是转人工）</span>
-          <textarea className="input ai-form-textarea" value={sample} maxLength={500}
-            onChange={(e) => setSample(e.target.value)}
-            placeholder="如：王者荣耀想从黄金上到钻石，大概多少钱多久？" />
-        </div>
-        {testResult && (
-          <div className="ai-test-result">
-            <span className={'ai-dot ' + (TEST_DECISION_LABELS[testResult.decision]?.cls ?? 'st-warn')} />
-            <b>{TEST_DECISION_LABELS[testResult.decision]?.t ?? testResult.decision}</b>
-            <span className="ai-card-sep">·</span> 风险 {RISK_LABEL[riskOf(testResult.risk)]}
-            {testResult.matched.length > 0 && (
-              <>
-                <span className="ai-card-sep">·</span> 命中人审：
-                {testResult.matched.map((k) => GUARDRAILS.find((g) => g.key === k)?.label ?? k).join(' / ')}
-              </>
-            )}
-            {testResult.summary && <div className="ai-note" style={{ marginTop: 6 }}>{testResult.summary}</div>}
+          <div className="row" style={{ marginTop: 14, flexWrap: 'wrap', gap: 8 }}>
+            <button className="btn primary" disabled={busy !== ''} onClick={savePolicy}>
+              {busy === 'save' ? '保存中…' : '保存策略'}
+            </button>
+            <button className="btn" disabled={busy !== ''} onClick={applyTemplate}>
+              {busy === 'template' ? '应用中…' : '应用游戏代练客服模板'}
+            </button>
+            <button className="btn" disabled={busy !== '' || employeeId == null || !sample.trim()} onClick={runTest}
+              title={employeeId == null ? '接入真实数据源后可试运行' : ''}>
+              {busy === 'test' ? '判断中…' : '试运行判断'}
+            </button>
+            {employeeId == null && <span className="dim" style={{ fontSize: 12 }}>演示模式：接入真实 AI 员工数据源后可保存 / 试运行</span>}
           </div>
-        )}
-
-        {notice && (
-          <div className={notice.tone === 'ok' ? 'ai-ok' : notice.tone === 'err' ? 'ai-warn' : 'ai-warn'} style={{ marginTop: 12 }}>
-            {notice.text}
-          </div>
-        )}
-
-        <div className="ai-bind-actions">
-          <button className="btn btn-primary" disabled={busy !== ''} onClick={savePolicy}>
-            {busy === 'save' ? '保存中…' : '保存策略'}
-          </button>
-          <button className="btn" disabled={busy !== ''} onClick={applyTemplate}>
-            {busy === 'template' ? '应用中…' : '应用游戏代练客服模板'}
-          </button>
-          <button className="btn" disabled={busy !== '' || employeeId == null || !sample.trim()} onClick={runTest}
-            title={employeeId == null ? '接入真实数据源后可试运行' : ''}>
-            {busy === 'test' ? '判断中…' : '试运行判断'}
-          </button>
-          {employeeId == null && <span className="ai-bind-hint">演示模式：接入真实 AI 员工数据源后可保存 / 试运行</span>}
         </div>
       </div>
     </>
@@ -1351,16 +1329,14 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
 
 function ChipField({ title, keys, empty }: { title: string; keys: string[]; empty: string }) {
   return (
-    <div className="ai-field">
-      <div className="ai-field-title">{title}</div>
+    <div className="form-field">
+      <span>{title}</span>
       {keys.length === 0 ? (
-        <div className="ai-field-empty">{empty}</div>
+        <div className="dim" style={{ fontSize: 12 }}>{empty}</div>
       ) : (
-        <div className="ai-chips">
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
           {keys.map((k) => (
-            <span key={k} className="ai-chip">
-              {keyLabel(k)}
-            </span>
+            <span key={k} className="chip outline">{keyLabel(k)}</span>
           ))}
         </div>
       )}
@@ -1368,22 +1344,24 @@ function ChipField({ title, keys, empty }: { title: string; keys: string[]; empt
   );
 }
 
+const custAvatar: Record<Risk, string> = { high: 'warn', medium: 'accent', low: 'brand' };
+
 function CustomerCard({ cu }: { cu: CustomerVM }) {
   return (
-    <div className="ai-card">
-      <div className="ai-card-head">
-        <span className={'ai-cust-av risk-' + cu.risk}>{cu.code.slice(0, 2)}</span>
-        <div className="ai-card-id">
-          <div className="ai-card-name">客户 {cu.code}</div>
-          <div className="ai-card-sub">@{cu.instName} · {cu.ago || '—'}</div>
+    <div className="card">
+      <div className="card-b tight">
+        <div className="row">
+          <span className={'avatar ' + custAvatar[cu.risk]}>{cu.code.slice(0, 2)}</span>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600 }}>客户 {cu.code}</div>
+            <div className="dim mono" style={{ fontSize: 11 }}>@{cu.instName} · {cu.ago || '—'}</div>
+          </div>
+          <span className={'dot ' + riskDotCls(cu.risk)} title={RISK_LABEL[cu.risk]} />
         </div>
-        <span className={'ai-dot ' + riskDotCls(cu.risk)} title={RISK_LABEL[cu.risk]} />
-      </div>
-      <div className="ai-card-stats">
-        <span className={'ai-role ai-role-stage'}>{stageLabel(cu.stage)}</span>
-        <span className="ai-card-sep">·</span> 意向 {cu.intent ?? '—'}
-        <span className="ai-card-sep">·</span> 消息 {cu.messages}
-        <span className="ai-card-sep">·</span> 记忆 {cu.memActive}/{cu.memCandidate}
+        <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
+          <span className="chip outline">{stageLabel(cu.stage)}</span>
+          <span className="dim" style={{ fontSize: 12 }}>意向 {cu.intent ?? '—'} · 消息 {cu.messages} · 记忆 {cu.memActive}/{cu.memCandidate}</span>
+        </div>
       </div>
     </div>
   );
@@ -1398,11 +1376,15 @@ function CustomerBoard({ customers, demo }: { customers: CustomerVM[]; demo: boo
   if (customers.length === 0)
     return (
       <>
-        <div className="ai-crosslink">
+        <div className="safe-note row" style={{ justifyContent: 'space-between' }}>
           <span>需要按客户维度筛选 / 查看画像与 AI 建议？</span>
-          <button className="btn-text" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
+          <button className="btn sm" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
         </div>
-        <div className="ai-note">暂无客户画像。请先启动 OCR 历史补全并运行记忆 / 画像抽取。</div>
+        <div className="empty-state">
+          <div className="empty-blob">👤</div>
+          <div className="empty-title">暂无客户画像</div>
+          <div className="empty-sub">请先启动 OCR 历史补全并运行记忆 / 画像抽取。</div>
+        </div>
       </>
     );
   const counts = {
@@ -1411,24 +1393,24 @@ function CustomerBoard({ customers, demo }: { customers: CustomerVM[]; demo: boo
   };
   return (
     <>
-      <div className="ai-crosslink">
+      <div className="safe-note row" style={{ justifyContent: 'space-between' }}>
         <span>需要按客户维度管理、看 AI 跟进建议与所属微信？</span>
-        <button className="btn-text" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
+        <button className="btn sm" onClick={() => nav('/customers')}>打开客户 CRM ›</button>
       </div>
-      <div className="ai-note">
+      <div className="safe-note">
         客户画像来自 OCR 入库消息 + 记忆 / 画像抽取。只展示 hash、阶段、意向、风险与记忆计数，不显示聊天正文。
         {demo && ' 当前为演示数据。'}
       </div>
-      <div className="ai-filterbar">
+      <div className="tabs" style={{ border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)', marginBottom: 14 }}>
         {(['all', 'high', 'medium', 'low'] as const).map((r) => (
-          <button key={r} className={'ai-filter' + (risk === r ? ' on' : '')} onClick={() => setRisk(r)}>
+          <button key={r} className={'tab' + (risk === r ? ' active' : '')} onClick={() => setRisk(r)}>
             {r === 'all' ? '全部' : RISK_LABEL[r]}
-            {r === 'high' && counts.high > 0 && <span className="ai-tab-badge">{counts.high}</span>}
-            {r === 'medium' && counts.medium > 0 && <span className="ai-tab-badge">{counts.medium}</span>}
+            {r === 'high' && counts.high > 0 && <span className="num">{counts.high}</span>}
+            {r === 'medium' && counts.medium > 0 && <span className="num">{counts.medium}</span>}
           </button>
         ))}
       </div>
-      <div className="ai-custgrid">
+      <div className="grid-3" style={{ marginTop: 0 }}>
         {sorted.map((cu) => (
           <CustomerCard key={cu.key} cu={cu} />
         ))}
@@ -1470,68 +1452,74 @@ function KnowledgePanel({
   };
   return (
     <>
-      <div className="ai-kb-import">
-        <div className="ai-bind-title">导入知识库</div>
-        <p className="ai-bind-desc">
-          上传 Markdown 到 AI 员工知识库，服务端写入私有目录并重建检索切片。后台只显示 hash / 计数，不展示正文与原始标题。
-          {!canImport && ' 当前未接入真实数据源，导入功能在配置数据源后可用。'}
-        </p>
-        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="文档标题" />
-        <textarea
-          className="input ai-kb-textarea"
-          value={markdown}
-          onChange={(e) => setMarkdown(e.target.value)}
-          placeholder={'# 退换货政策\n\n把商家话术 / 商品知识粘贴到这里'}
-        />
-        <div className="ai-bind-actions">
-          <button className="btn btn-primary" disabled={busy || !markdown.trim() || !canImport} onClick={submit}>
-            {busy ? '导入中…' : '导入 Markdown'}
-          </button>
-          {result && <span className="ai-bind-hint">已导入 {result.document_count} 文档 / {result.chunk_count} 切片</span>}
+      <div className="card">
+        <div className="card-h"><span className="title">导入知识库</span></div>
+        <div className="card-b col" style={{ gap: 10 }}>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            上传 Markdown 到 AI 员工知识库，服务端写入私有目录并重建检索切片。后台只显示 hash / 计数，不展示正文与原始标题。
+            {!canImport && ' 当前未接入真实数据源，导入功能在配置数据源后可用。'}
+          </p>
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="文档标题" />
+          <textarea
+            className="textarea"
+            style={{ minHeight: 160 }}
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+            placeholder={'# 退换货政策\n\n把商家话术 / 商品知识粘贴到这里'}
+          />
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn primary" disabled={busy || !markdown.trim() || !canImport} onClick={submit}>
+              {busy ? '导入中…' : '导入 Markdown'}
+            </button>
+            {result && <span className="dim" style={{ fontSize: 12 }}>已导入 {result.document_count} 文档 / {result.chunk_count} 切片</span>}
+          </div>
+          {err && <div className="src-note demo"><span className="d" /> {err}</div>}
         </div>
-        {err && <div className="ai-warn" style={{ marginTop: 10 }}>{err}</div>}
       </div>
 
-      <div className="ai-kpis">
-        <div className="ai-kpi">
-          <span className="ai-kpi-val">{knowledge.docCount}</span>
-          <span className="ai-kpi-lbl">知识文档</span>
+      <div className="kpi-grid" style={{ marginTop: 16, gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
+        <div className="kpi">
+          <div className="label">知识文档</div>
+          <div className="value">{knowledge.docCount}</div>
         </div>
-        <div className="ai-kpi">
-          <span className="ai-kpi-val">{knowledge.chunkCount}</span>
-          <span className="ai-kpi-lbl">检索切片</span>
+        <div className="kpi">
+          <div className="label">检索切片</div>
+          <div className="value">{knowledge.chunkCount}</div>
         </div>
       </div>
+
       {knowledge.docs.length === 0 ? (
-        <div className="ai-note">暂无知识库。可在上方粘贴 Markdown 导入。</div>
+        <div className="safe-note" style={{ marginTop: 16 }}>暂无知识库。可在上方粘贴 Markdown 导入。</div>
       ) : (
-        <table className="ai-table">
-          <thead>
-            <tr>
-              <th>文档</th>
-              <th>切片</th>
-              <th>状态</th>
-              <th>内容 hash</th>
-              <th>更新</th>
-            </tr>
-          </thead>
-          <tbody>
-            {knowledge.docs.map((d) => (
-              <tr key={d.key}>
-                <td>
-                  <b>{d.label}</b>
-                  <div className="ai-cell-sub">title hash · {d.titleHash}</div>
-                </td>
-                <td>{d.chunks}</td>
-                <td>
-                  <span className={'ai-dot ' + (d.status === '已切片' ? 'st-on' : 'st-warn')} /> {d.status}
-                </td>
-                <td className="ai-mono">{d.titleHash.slice(0, 12)}</td>
-                <td className="ai-cell-sub">{d.ago}</td>
+        <div className="card" style={{ marginTop: 16, overflow: 'hidden' }}>
+          <table className="t">
+            <thead>
+              <tr>
+                <th>文档</th>
+                <th>切片</th>
+                <th>状态</th>
+                <th>内容 hash</th>
+                <th>更新</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {knowledge.docs.map((d) => (
+                <tr key={d.key}>
+                  <td>
+                    <b>{d.label}</b>
+                    <div className="dim mono" style={{ fontSize: 11 }}>title hash · {d.titleHash}</div>
+                  </td>
+                  <td>{d.chunks}</td>
+                  <td>
+                    <span className={'dot ' + (d.status === '已切片' ? 'st-on' : 'st-warn')} /> {d.status}
+                  </td>
+                  <td className="mono">{d.titleHash.slice(0, 12)}</td>
+                  <td className="dim">{d.ago}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
@@ -1542,46 +1530,43 @@ function PendingBoard({ pending, demo }: { pending: PendingVM; demo: boolean }) 
   const nav = useNavigate();
   return (
     <>
-      <div className="ai-crosslink">
+      <div className="safe-note row" style={{ justifyContent: 'space-between' }}>
         <span>需要按风险 / 类型分流处理待确认动作队列？</span>
-        <button className="btn-text" onClick={() => nav('/approvals')}>打开待确认中心 ›</button>
+        <button className="btn sm" onClick={() => nav('/approvals')}>打开待确认中心 ›</button>
       </div>
-      <div className="ai-warn">
-        以下为等待人工确认 / 计划中的动作汇总{demo ? '（演示）' : '（真实计数）'}。<b>本页只读，不触发任何真实微信动作</b>，按钮均不可用。
+      <div className="src-note demo">
+        <span className="d" /> 以下为等待人工确认 / 计划中的动作汇总{demo ? '（演示）' : '（真实计数）'}。本页只读，不触发任何真实微信动作，按钮均不可用。
       </div>
-      <div className="ai-kpis" style={{ marginTop: 12 }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: `repeat(${Math.max(1, pending.rows.length)}, minmax(0,1fr))` }}>
         {pending.rows.map((r) => (
-          <div key={r.key} className={'ai-kpi' + (r.value ? ' ai-kpi-warn' : '')}>
-            <span className="ai-kpi-val">{r.value}</span>
-            <span className="ai-kpi-lbl">{r.label}</span>
+          <div key={r.key} className="kpi">
+            <div className="label">{r.label}</div>
+            <div className="value">{r.value}</div>
+            <div className={'delta' + (r.value ? ' warn' : ' muted')}>{r.value ? '待人工确认' : '无'}</div>
           </div>
         ))}
       </div>
       {pending.drafts.length > 0 ? (
-        <div className="ai-pending" style={{ marginTop: 12 }}>
+        <div className="pending-list" style={{ marginTop: 16 }}>
           {pending.drafts.map((d) => (
-            <div key={d.key} className="ai-pending-item">
-              <div className="ai-pending-head">
-                <span className="ai-mono">{d.taskLabel}</span>
-                <span className="ai-card-sep">·</span> @{d.instName}
+            <div key={d.key} className="pending-card">
+              <div>
+                <div className="h">
+                  <span className="mono">{d.taskLabel}</span>
+                  <span className="dim">· @{d.instName}</span>
+                </div>
+                <div className="body">{d.redacted}</div>
               </div>
-              <div className="ai-pending-draft">{d.redacted}</div>
-              <div className="ai-pending-actions">
-                <button className="btn btn-primary" disabled title="后续接人审 API；当前不触发真实微信动作">
-                  通过并发送
-                </button>
-                <button className="btn" disabled title="后续接人审 API；当前不触发真实微信动作">
-                  编辑后通过
-                </button>
-                <button className="btn btn-danger" disabled title="后续接人审 API；当前不触发真实微信动作">
-                  驳回
-                </button>
+              <div className="acts">
+                <button className="btn primary sm" disabled title="后续接人审 API；当前不触发真实微信动作">通过并发送</button>
+                <button className="btn sm" disabled title="后续接人审 API；当前不触发真实微信动作">编辑后通过</button>
+                <button className="btn danger sm" disabled title="后续接人审 API；当前不触发真实微信动作">驳回</button>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="ai-note" style={{ marginTop: 12 }}>当前没有等待确认的动作 🎉</div>
+        <div className="safe-note" style={{ marginTop: 16 }}>当前没有等待确认的动作 🎉</div>
       )}
     </>
   );
@@ -1589,29 +1574,28 @@ function PendingBoard({ pending, demo }: { pending: PendingVM; demo: boolean }) 
 
 // ==================== 运行记录 ====================
 function RunLog({ runs, demo }: { runs: RunVM[]; demo: boolean }) {
-  if (runs.length === 0) return <div className="ai-note">暂无运行记录。</div>;
+  if (runs.length === 0) return <div className="safe-note">暂无运行记录。</div>;
   return (
-    <>
-      <div className="ai-note">AI 员工的运行时间线（只读脱敏摘要）。{demo && ' 当前为演示数据。'}</div>
-      <ul className="ai-timeline">
-        {runs.map((r) => (
-          <li key={r.key} className="ai-tl-item">
-            <span className={'ai-tl-dot ' + r.status.cls} />
-            <div className="ai-tl-body">
-              <div className="ai-tl-main">
-                <b>{r.emp}</b> {r.act}
-                <span className="ai-tl-inst">@{r.instName}</span>
-              </div>
-              <div className="ai-tl-meta">
-                <span className={'ai-dot ' + r.status.cls} /> {r.status.t}
-                {r.summary && <> · {r.summary}</>}
-                {r.ago && <> · {r.ago}</>}
+    <div className="card">
+      <div className="card-h"><span className="title">运行记录 · 时间线</span><span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>只读脱敏摘要{demo ? ' · 演示' : ''}</span></div>
+      <div className="card-b">
+        <div className="timeline">
+          {runs.map((r) => (
+            <div key={r.key} className="ti">
+              <div className="d"><div className="dotline" /><div className={'p ' + r.status.cls} /></div>
+              <div className="body">
+                <div className="w"><b>{r.emp}</b> {r.act} <span className="dim">@{r.instName}</span></div>
+                <div className="t">
+                  <span className={'dot ' + r.status.cls} /> {r.status.t}
+                  {r.summary && <span>· {r.summary}</span>}
+                  {r.ago && <span>· {r.ago}</span>}
+                </div>
               </div>
             </div>
-          </li>
-        ))}
-      </ul>
-    </>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1665,64 +1649,70 @@ function ToolsPanel({ vm, demo }: { vm: CenterVM; demo: boolean }) {
     { key: 'approve', kind: 'approve', title: '待确认 / 自动发送', detail: pendingTotal ? `${pendingTotal} 个动作待人工确认后落地` : '敏感动作进待确认队列，人工确认后执行' },
   ];
 
+  const riskChipCls: Record<ToolRisk, string> = { low: 'brand', medium: 'warn', high: 'danger' };
   return (
     <>
-      <div className="ai-note">
+      <div className="safe-note">
         工具库与工作流展示 AI 员工在授权微信实例内可调用的能力与处理链路。全部由安全字段派生（能力键 / 计数），
         不含聊天正文 / 回复原文 / token。「配置」为占位，后端写路径接入后启用。
         {demo && ' 当前为演示数据。'}
       </div>
 
-      <div className="ai-sec" style={{ marginTop: 12 }}>
-        <div className="ai-sec-title">
-          工具库
-          <span className="ai-sec-count">{activeCount} / {TOOL_DEFS.length} 已在员工上启用</span>
+      <div className="card">
+        <div className="card-h">
+          <span className="title">工具库</span>
+          <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>{activeCount} / {TOOL_DEFS.length} 已在员工上启用</span>
         </div>
-        <div className="ai-tool-grid">
-          {TOOL_DEFS.map((t) => {
-            const on = enabledKeys.has(t.key);
-            const needApproval = t.risk !== 'low' || approvalKeys.has(t.key);
-            return (
-              <div key={t.key} className={'ai-tool-card' + (on ? '' : ' ai-tool-off')}>
-                <div className="ai-tool-head">
-                  <span className="ai-mono ai-tool-name">wechat.{t.key}</span>
-                  <span className={'ai-tool-risk risk-' + t.risk}>{TOOL_RISK_LABEL[t.risk]}</span>
+        <div className="card-b">
+          <div className="tool-grid">
+            {TOOL_DEFS.map((t) => {
+              const on = enabledKeys.has(t.key);
+              const needApproval = t.risk !== 'low' || approvalKeys.has(t.key);
+              return (
+                <div key={t.key} className="tool-card" style={on ? undefined : { opacity: 0.7 }}>
+                  <div className="row1">
+                    <span className="name">wechat.{t.key}</span>
+                    <span className={'chip ' + riskChipCls[t.risk]}>{TOOL_RISK_LABEL[t.risk]}</span>
+                  </div>
+                  <p className="desc">{t.desc}</p>
+                  <div className="row1">
+                    <span className="row" style={{ gap: 6, fontSize: 12, color: 'var(--text-2)' }}>
+                      <span className={'dot ' + (on ? 'st-on' : 'st-off')} />
+                      {on ? '已启用' : '未授权'}
+                      {needApproval && <span className="chip warn" style={{ fontSize: 10, padding: '1px 6px' }}>需人工确认</span>}
+                    </span>
+                    <button className="btn ghost sm" disabled title="工具配置写路径后端接入后启用">配置</button>
+                  </div>
                 </div>
-                <p className="ai-tool-desc">{t.desc}</p>
-                <div className="ai-tool-foot">
-                  <span className="ai-tool-state">
-                    <span className={'ai-dot ' + (on ? 'st-on' : 'st-off')} />
-                    {on ? '已启用' : '未授权'}
-                    {needApproval && <span className="ai-tool-tag">需人工确认</span>}
-                  </span>
-                  <button className="btn-text" disabled title="工具配置写路径后端接入后启用">
-                    配置
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      <div className="ai-sec" style={{ marginTop: 12 }}>
-        <div className="ai-sec-title">
-          处理工作流
-          <span className="ai-sec-count">消息接入 → 路由 → 知识库 → 起草 → 边界 → 待确认</span>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-h">
+          <span className="title">处理工作流</span>
+          <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>消息接入 → 路由 → 知识库 → 起草 → 边界 → 待确认</span>
         </div>
-        <div className="ai-flow">
-          {steps.map((s, i) => (
-            <div key={s.key} className={'ai-flow-node ai-flow-' + s.kind}>
-              <div className="ai-flow-idx">{i + 1}</div>
-              <div className="ai-flow-body">
-                <div className="ai-flow-title">{s.title}</div>
-                <div className="ai-flow-detail">{s.detail}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="ai-sec-meta">
-          工作流为运行链路的只读示意；真实发送 / 改备注 / 群操作由后端二次 gating，本页不触发任何真实微信动作。
+        <div className="card-b">
+          <div className="timeline">
+            {steps.map((s, i) => {
+              const cls = s.kind === 'cond' ? 'warn' : s.kind === 'approve' ? 'danger' : s.kind === 'tool' ? 'st-busy' : 'brand';
+              return (
+                <div key={s.key} className="ti">
+                  <div className="d"><div className="dotline" /><div className={'p ' + cls} /></div>
+                  <div className="body">
+                    <div className="w"><b>{i + 1}. {s.title}</b></div>
+                    <div className="t">{s.detail}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>
+            工作流为运行链路的只读示意；真实发送 / 改备注 / 群操作由后端二次 gating，本页不触发任何真实微信动作。
+          </div>
         </div>
       </div>
     </>
@@ -1757,89 +1747,82 @@ function SettingsPanel({
       : '';
   return (
     <>
-      <div className="ai-note">
+      <div className="safe-note">
         运营设置展示 AI 员工数据源与安全策略现状。实例 / 账号 / 授权仍在
-        <button className="btn-text" style={{ padding: '0 4px' }} onClick={() => nav('/admin')}>系统设置</button>
+        <button className="btn ghost sm" style={{ margin: '0 4px', height: 22 }} onClick={() => nav('/admin')}>系统设置</button>
         管理，本页不新造租户或授权。
       </div>
 
-      <div className="ai-fieldgrid" style={{ marginTop: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+      <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
         {/* 数据源与运行 */}
-        <div className="ai-sec">
-          <div className="ai-sec-title">数据源与运行</div>
-          <div className="ai-set-row">
-            <span className="ai-set-k">接入状态</span>
-            <span className="ai-set-v">
-              <span className={'ai-dot ' + (real ? 'st-on' : 'st-warn')} />
-              {real ? '已接入真实数据（只读代理）' : '演示回退'}
-            </span>
+        <div className="card">
+          <div className="card-h"><span className="title">数据源与运行</span></div>
+          <div className="card-b">
+            <div className="item"><span>接入状态</span><span className="v"><span className={'dot ' + (real ? 'st-on' : 'st-warn')} /> {real ? '已接入真实数据（只读代理）' : '演示回退'}</span></div>
+            <div className="item"><span>数据来源</span><span className="v mono">ai-wechat-employee · management_api_v1</span></div>
+            <div className="item"><span>可见实例</span><span className="v">{instanceCount} 个（AI 员工可操作范围）</span></div>
+            <div className="item"><span>在岗员工</span><span className="v">{vm.employees.filter((e) => e.statusKind === 'on').length} / {vm.employees.length}</span></div>
+            {!real && demoReason && <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>当前：{demoReason}。字段 allowlist 与按实例过滤在数据源就绪后自动启用。</div>}
           </div>
-          <div className="ai-set-row">
-            <span className="ai-set-k">数据来源</span>
-            <span className="ai-set-v ai-mono">ai-wechat-employee · management_api_v1</span>
-          </div>
-          <div className="ai-set-row">
-            <span className="ai-set-k">可见实例</span>
-            <span className="ai-set-v">{instanceCount} 个（AI 员工可操作范围）</span>
-          </div>
-          <div className="ai-set-row">
-            <span className="ai-set-k">在岗员工</span>
-            <span className="ai-set-v">{vm.employees.filter((e) => e.statusKind === 'on').length} / {vm.employees.length}</span>
-          </div>
-          {!real && demoReason && <div className="ai-set-hint">当前：{demoReason}。字段 allowlist 与按实例过滤在数据源就绪后自动启用。</div>}
         </div>
 
         {/* 安全与合规 */}
-        <div className="ai-sec">
-          <div className="ai-sec-title">安全与合规</div>
-          <ul className="ai-set-list">
-            <li><b>只读代理 + 字段 allowlist：</b>后台只展示 hash / suffix / 计数 / 状态 / 脱敏摘要。</li>
-            <li><b>按可见实例过滤（RBAC）：</b>子账号只看被授权实例，管理员看全部。</li>
-            <li><b>高风险动作人工确认：</b>发送 / 改备注 / 群操作进待确认队列，人工确认后才落地。</li>
-            <li><b>不外泄敏感原文：</b>不展示聊天正文 / 回复原文 / token / 绑定串明文（二维码除外）。</li>
-          </ul>
+        <div className="card">
+          <div className="card-h"><span className="title">安全与合规</span></div>
+          <div className="card-b">
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7 }}>
+              <li><b>只读代理 + 字段 allowlist：</b>后台只展示 hash / suffix / 计数 / 状态 / 脱敏摘要。</li>
+              <li><b>按可见实例过滤（RBAC）：</b>子账号只看被授权实例，管理员看全部。</li>
+              <li><b>高风险动作人工确认：</b>发送 / 改备注 / 群操作进待确认队列，人工确认后才落地。</li>
+              <li><b>不外泄敏感原文：</b>不展示聊天正文 / 回复原文 / token / 绑定串明文（二维码除外）。</li>
+            </ul>
+          </div>
         </div>
       </div>
 
       {/* 内置人审触发词（只读 allowlist） */}
-      <div className="ai-sec" style={{ marginTop: 12 }}>
-        <div className="ai-sec-title">
-          内置强制人审触发词
-          <span className="ai-sec-count">命中即转人工确认 · 可在员工「自动回复策略」中按需调整</span>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-h">
+          <span className="title">内置强制人审触发词</span>
+          <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>命中即转人工确认 · 可在员工「自动回复策略」中按需调整</span>
         </div>
-        <div className="ai-choice-row">
-          {GUARDRAILS.map((g) => (
-            <span key={g.key} className="ai-choice ai-guard on" style={{ cursor: 'default' }}>{g.label}</span>
-          ))}
+        <div className="card-b">
+          <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {GUARDRAILS.map((g) => (
+              <span key={g.key} className="chip danger">{g.label}</span>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* 高级设置：无后端能力，占位不假成功 */}
-      <div className="ai-sec" style={{ marginTop: 12 }}>
-        <div className="ai-sec-title">
-          高级设置
-          <span className="ai-sec-count">后端接入后启用 · 当前仅展示占位，不影响真实运行</span>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-h">
+          <span className="title">高级设置</span>
+          <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>后端接入后启用 · 当前仅展示占位，不影响真实运行</span>
         </div>
-        <div className="ai-form-grid">
-          <label className="ai-form-field">
-            <span className="ai-form-label">主模型路由</span>
-            <select className="input" disabled defaultValue="">
-              <option value="">后端接入后配置</option>
-            </select>
+        <div className="card-b col" style={{ gap: 12 }}>
+          <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
+            <label className="form-field grow">
+              <span>主模型路由</span>
+              <select className="select" disabled defaultValue="">
+                <option value="">后端接入后配置</option>
+              </select>
+            </label>
+            <label className="form-field grow">
+              <span>每月预算</span>
+              <input className="input" disabled placeholder="后端接入后配置" />
+            </label>
+          </div>
+          <label className="form-field">
+            <span>Webhook 推送地址</span>
+            <input className="input mono" disabled placeholder="后端接入后配置（https://your.domain/hook）" />
           </label>
-          <label className="ai-form-field">
-            <span className="ai-form-label">每月预算</span>
-            <input className="input" disabled placeholder="后端接入后配置" />
-          </label>
-        </div>
-        <label className="ai-form-field" style={{ marginTop: 12 }}>
-          <span className="ai-form-label">Webhook 推送地址</span>
-          <input className="input ai-mono" disabled placeholder="后端接入后配置（https://your.domain/hook）" />
-        </label>
-        <div className="ai-set-hint">
-          {isAdmin
-            ? '这些能力依赖 ai-wechat-employee 的写路径，尚未部署；接入后此处将可保存并下发，届时不再是占位。'
-            : '模型路由 / 预算 / Webhook 为管理员配置项，且需后端写路径接入后启用。'}
+          <div className="dim" style={{ fontSize: 11 }}>
+            {isAdmin
+              ? '这些能力依赖 ai-wechat-employee 的写路径，尚未部署；接入后此处将可保存并下发，届时不再是占位。'
+              : '模型路由 / 预算 / Webhook 为管理员配置项，且需后端写路径接入后启用。'}
+          </div>
         </div>
       </div>
     </>
@@ -1870,60 +1853,68 @@ function BindPanel({ real }: { real: AiConsolePayload | null }) {
     }
   };
   return (
-    <div className="ai-bind">
-      <div className="ai-bind-title">扫码绑定秘书</div>
-      <p className="ai-bind-desc">
-        生成一次性绑定 payload，给控制机器人 / 二维码使用。后端只保存 token hash；原始绑定串只编码进二维码，不以明文展示。
-        {!canBind && ' 当前未接入真实数据源，绑定在配置数据源后可用。'}
-      </p>
-      {bp && bp.channel_count > 0 ? (
-        <table className="ai-table" style={{ marginTop: 10 }}>
-          <thead>
-            <tr>
-              <th>通道</th>
-              <th>类型</th>
-              <th>状态</th>
-              <th>已绑定 token</th>
-              <th>绑定时间</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bp.channels.map((ch) => (
-              <tr key={ch.channel_id}>
-                <td className="ai-mono">#{ch.channel_id}</td>
-                <td>{ch.channel_type}</td>
-                <td>
-                  <span
-                    className={'ai-dot ' + (ch.bind_status === 'active' ? 'st-on' : ch.bind_status === 'pending' ? 'st-warn' : 'st-off')}
-                  />{' '}
-                  {ch.bind_status}
-                </td>
-                <td>{ch.has_bind_token ? '是' : '否'}</td>
-                <td className="ai-cell-sub">{ch.bound_at ? timeAgo(ch.bound_at) : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="ai-note" style={{ marginTop: 10 }}>暂无控制通道。</div>
-      )}
-      <div className="ai-bind-actions" style={{ marginTop: 12 }}>
-        <button className="btn btn-primary" disabled={busy || !canBind} onClick={createBind}>
-          {busy ? '生成中…' : '生成绑定码'}
-        </button>
-        <span className="ai-bind-hint">管理员生成；子账号无权生成</span>
-      </div>
-      {err && <div className="ai-warn" style={{ marginTop: 10 }}>{err}</div>}
-      {payload && (
-        <div className="ai-bind-payload">
-          <div className="ai-bind-title">一次性绑定二维码</div>
-          {qrUrl ? <img className="ai-qrbox" src={qrUrl} alt="扫码绑定秘书二维码" /> : <div className="ai-qrbox">生成中</div>}
-          <div className="ai-note">扫码即绑定；原始绑定串只编码进上方二维码，不在页面以明文展示。</div>
-          <div className="ai-note">
-            channel #{payload.channel_id} · payload hash {payload.bind_payload_hash} · token hash {payload.bind_token_hash}
+    <div className="card">
+      <div className="card-h"><span className="title">扫码绑定秘书</span></div>
+      <div className="card-b">
+        <p className="muted" style={{ margin: '0 0 12px', fontSize: 13 }}>
+          生成一次性绑定 payload，给控制端 / 二维码使用。后端只保存 token hash；原始绑定串只编码进二维码，不以明文展示。
+          {!canBind && ' 当前未接入真实数据源，绑定在配置数据源后可用。'}
+        </p>
+        {bp && bp.channel_count > 0 ? (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <table className="t">
+              <thead>
+                <tr>
+                  <th>通道</th>
+                  <th>类型</th>
+                  <th>状态</th>
+                  <th>已绑定 token</th>
+                  <th>绑定时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bp.channels.map((ch) => (
+                  <tr key={ch.channel_id}>
+                    <td className="mono">#{ch.channel_id}</td>
+                    <td>{ch.channel_type}</td>
+                    <td>
+                      <span className={'dot ' + (ch.bind_status === 'active' ? 'st-on' : ch.bind_status === 'pending' ? 'st-warn' : 'st-off')} />{' '}
+                      {ch.bind_status}
+                    </td>
+                    <td>{ch.has_bind_token ? '是' : '否'}</td>
+                    <td className="dim">{ch.bound_at ? timeAgo(ch.bound_at) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        ) : (
+          <div className="safe-note">暂无控制通道。</div>
+        )}
+        <div className="row" style={{ marginTop: 14, gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn primary" disabled={busy || !canBind} onClick={createBind}>
+            {busy ? '生成中…' : '生成绑定码'}
+          </button>
+          <span className="dim" style={{ fontSize: 12 }}>管理员生成；子账号无权生成</span>
         </div>
-      )}
+        {err && <div className="src-note demo" style={{ marginTop: 12, marginBottom: 0 }}><span className="d" /> {err}</div>}
+        {payload && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="card-h"><span className="title">一次性绑定二维码</span></div>
+            <div className="card-b col" style={{ gap: 10, alignItems: 'flex-start' }}>
+              {qrUrl ? (
+                <img src={qrUrl} alt="扫码绑定秘书二维码" style={{ width: 196, height: 196, borderRadius: 12, border: '1px solid var(--line)', background: '#fff', padding: 6 }} />
+              ) : (
+                <div style={{ width: 196, height: 196, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, border: '1px solid var(--line)' }}>生成中</div>
+              )}
+              <div className="dim" style={{ fontSize: 12 }}>扫码即绑定；原始绑定串只编码进上方二维码，不在页面以明文展示。</div>
+              <div className="dim mono" style={{ fontSize: 11 }}>
+                channel #{payload.channel_id} · payload hash {payload.bind_payload_hash} · token hash {payload.bind_token_hash}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1941,7 +1932,7 @@ function EmptyBinds({ isAdmin, onManage }: { isAdmin: boolean; onManage: () => v
       </div>
       {isAdmin && (
         <div className="empty-action">
-          <button className="btn btn-primary" onClick={onManage}>
+          <button className="btn primary" onClick={onManage}>
             去管理页新建实例
           </button>
         </div>
