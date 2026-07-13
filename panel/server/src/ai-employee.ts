@@ -209,6 +209,8 @@ function runServiceStartObserveCli(cfg: AiEmployeeConfig): Promise<any> {
         cfg.tenant,
         '--employee-id',
         String(cfg.secretaryId),
+        '--python',
+        cfg.python,
         '--record-run',
         '--reset-state',
       ],
