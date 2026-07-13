@@ -147,6 +147,57 @@ export interface AiServiceRunsResponse {
   };
 }
 
+export interface AiServiceActionPlanResponse {
+  ok: true;
+  mode: 'dry_run_disabled';
+  enabled: boolean;
+  action: 'start' | 'stop' | 'restart';
+  executable: false;
+  planned_command: string[];
+  safety_checks: string[];
+  warnings: string[];
+  next_required: string;
+}
+
+
+const SERVICE_ACTIONS = ['start', 'stop', 'restart'] as const;
+type ServiceAction = (typeof SERVICE_ACTIONS)[number];
+
+export function buildServiceActionPlan(action: unknown): AiServiceActionPlanResponse {
+  const cfg = aiEmployeeConfig();
+  const selected = SERVICE_ACTIONS.includes(action as ServiceAction) ? (action as ServiceAction) : 'start';
+  const serviceCli = serviceCliPath(cfg);
+  return {
+    ok: true,
+    mode: 'dry_run_disabled',
+    enabled: isConfigured(cfg),
+    action: selected,
+    executable: false,
+    planned_command: [
+      cfg.python,
+      serviceCli,
+      selected,
+      '--db',
+      cfg.db || '<configured-db>',
+      '--tenant',
+      cfg.tenant,
+      '--employee-id',
+      String(cfg.secretaryId),
+    ],
+    safety_checks: [
+      '确认当前实例已登录且授权给该 AI 员工',
+      '确认 daemon 启动会先 baseline 当前消息，不处理历史消息',
+      '确认自动发送仍受人审/安全词/频控闸门约束',
+      '确认日志和返回值只展示 hash/count/status，不展示聊天正文',
+    ],
+    warnings: [
+      '当前接口只返回计划，不执行 start/stop/restart',
+      '正式开启写操作前必须补二次确认、审计日志和生产 E2E',
+    ],
+    next_required: 'enable_execute_path_with_confirmation_and_audit',
+  };
+}
+
 function serviceCliPath(cfg: AiEmployeeConfig): string {
   return process.env.WOC_AI_EMPLOYEE_SERVICE_CLI || path.join(path.dirname(cfg.cli), 'woc_ai_employee_service.py');
 }

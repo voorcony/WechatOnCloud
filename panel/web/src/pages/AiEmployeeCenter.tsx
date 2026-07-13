@@ -21,6 +21,7 @@ import {
   type AiAutoReplyDraft,
   type AiEmployeeServiceHealthResponse,
   type AiEmployeeServiceRunsResponse,
+  type AiServiceActionPlanResponse,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -728,6 +729,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
 
   const [serviceHealth, setServiceHealth] = useState<AiEmployeeServiceHealthResponse | null>(null);
   const [serviceRuns, setServiceRuns] = useState<AiEmployeeServiceRunsResponse | null>(null);
+  const [serviceActionPlan, setServiceActionPlan] = useState<AiServiceActionPlanResponse | null>(null);
   useEffect(() => {
     api
       .aiEmployeeServiceHealth()
@@ -737,6 +739,10 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       .aiEmployeeServiceRuns()
       .then((r) => setServiceRuns(r))
       .catch(() => setServiceRuns(null));
+    api
+      .aiEmployeeServiceActionPlan('start')
+      .then((r) => setServiceActionPlan(r))
+      .catch(() => setServiceActionPlan(null));
   }, []);
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
@@ -804,7 +810,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       </div>
 
       <OperationsHealthCard health={vm.health} demo={!real} />
-      <ServiceHealthCard resp={serviceHealth} runs={serviceRuns} />
+      <ServiceHealthCard resp={serviceHealth} runs={serviceRuns} actionPlan={serviceActionPlan} />
 
       <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
         {SEGMENTS.map((s) => (
@@ -875,7 +881,7 @@ function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boo
 }
 
 
-function ServiceHealthCard({ resp, runs }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null }) {
+function ServiceHealthCard({ resp, runs, actionPlan }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null; actionPlan: AiServiceActionPlanResponse | null }) {
   if (!resp) return null;
   const h = resp.mode === 'real' ? resp.health : null;
   const state = h?.service_state ?? 'unknown';
