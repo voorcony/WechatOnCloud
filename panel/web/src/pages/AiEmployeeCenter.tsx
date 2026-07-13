@@ -250,13 +250,22 @@ interface KnowledgeDocVM {
   key: string;
   label: string;
   titleHash: string;
+  contentHash: string;
   chunks: number;
   status: string;
   ago: string;
+  enabled: boolean | null;
+  version: number | null;
+  groupKey: string | null;
+  sourceSuffix: string;
 }
 interface KnowledgeVM {
   docCount: number;
   chunkCount: number;
+  enabledCount: number | null;
+  disabledCount: number | null;
+  groupCount: number | null;
+  groups: { key: string; docs: number; chunks: number }[];
   docs: KnowledgeDocVM[];
 }
 interface PendingVM {
@@ -448,17 +457,26 @@ function healthFromReal(c: AiConsolePayload): OpsHealthVM {
 }
 
 function kbVMFromReal(k: AiKnowledgeSummary | null): KnowledgeVM {
-  if (!k) return { docCount: 0, chunkCount: 0, docs: [] };
+  if (!k) return { docCount: 0, chunkCount: 0, enabledCount: null, disabledCount: null, groupCount: null, groups: [], docs: [] };
   return {
     docCount: k.document_count,
     chunkCount: k.chunk_count,
+    enabledCount: k.enabled_count ?? null,
+    disabledCount: k.disabled_count ?? null,
+    groupCount: k.group_count ?? null,
+    groups: (k.groups ?? []).map((g) => ({ key: g.group_key || 'default', docs: g.document_count, chunks: g.chunk_count })),
     docs: k.documents.map((d) => ({
       key: String(d.document_id),
       label: d.title_suffix ? `文档 ···${d.title_suffix}` : `文档 ${d.title_hash.slice(0, 8)}`,
       titleHash: d.title_hash,
+      contentHash: d.content_hash,
       chunks: d.chunk_count,
-      status: d.chunk_count > 0 ? '已切片' : '待切片',
+      status: d.enabled === false ? '已停用' : d.chunk_count > 0 ? '已启用' : '待切片',
       ago: timeAgo(d.updated_at),
+      enabled: d.enabled,
+      version: d.version,
+      groupKey: d.group_key,
+      sourceSuffix: d.source_path_suffix,
     })),
   };
 }
@@ -603,13 +621,25 @@ function buildDemoVM(instances: InstanceWithStatus[]): CenterVM {
   const knowledge: KnowledgeVM = {
     docCount: n,
     chunkCount: n * 6,
+    enabledCount: n,
+    disabledCount: 0,
+    groupCount: Math.min(2, n),
+    groups: [
+      { key: 'default', docs: Math.ceil(n / 2), chunks: Math.ceil(n / 2) * 6 },
+      ...(n > 1 ? [{ key: 'sales', docs: Math.floor(n / 2), chunks: Math.floor(n / 2) * 6 }] : []),
+    ],
     docs: Array.from({ length: n }, (_, i) => ({
       key: 'kb' + i,
       label: kbTitles[i % kbTitles.length],
       titleHash: fakeHash('kb' + i),
+      contentHash: fakeHash('kb-content' + i),
       chunks: 4 + (seedOf('kb' + i) % 10),
-      status: '已切片',
+      status: '已启用',
       ago: `${1 + (seedOf('kb' + i) % 12)} 小时前`,
+      enabled: true,
+      version: 1 + i,
+      groupKey: i % 2 ? 'sales' : 'default',
+      sourceSuffix: '.md',
     })),
   };
   const waitingTotal = employees.reduce((s, e) => s + e.tasksWaiting, 0);
@@ -1577,7 +1607,7 @@ function KnowledgePanel({
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ marginTop: 16, gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
+      <div className="kpi-grid" style={{ marginTop: 16, gridTemplateColumns: 'repeat(4, minmax(0,1fr))' }}>
         <div className="kpi">
           <div className="label">知识文档</div>
           <div className="value">{knowledge.docCount}</div>
@@ -1586,7 +1616,26 @@ function KnowledgePanel({
           <div className="label">检索切片</div>
           <div className="value">{knowledge.chunkCount}</div>
         </div>
+        <div className="kpi">
+          <div className="label">启用 / 停用</div>
+          <div className="value">{knowledge.enabledCount ?? knowledge.docCount}/{knowledge.disabledCount ?? 0}</div>
+        </div>
+        <div className="kpi">
+          <div className="label">知识分组</div>
+          <div className="value">{knowledge.groupCount ?? knowledge.groups.length}</div>
+        </div>
       </div>
+
+      {knowledge.groups.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-h"><span className="title">知识分组</span><span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>只显示 group key 与计数</span></div>
+          <div className="card-b row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {knowledge.groups.map((g) => (
+              <span key={g.key} className="chip outline">{g.key} · {g.docs} 文档 / {g.chunks} 切片</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {knowledge.docs.length === 0 ? (
         <div className="safe-note" style={{ marginTop: 16 }}>暂无知识库。可在上方粘贴 Markdown 导入。</div>
@@ -1598,6 +1647,7 @@ function KnowledgePanel({
                 <th>文档</th>
                 <th>切片</th>
                 <th>状态</th>
+                <th>分组 / 版本</th>
                 <th>内容 hash</th>
                 <th>更新</th>
               </tr>
@@ -1611,9 +1661,14 @@ function KnowledgePanel({
                   </td>
                   <td>{d.chunks}</td>
                   <td>
-                    <span className={'dot ' + (d.status === '已切片' ? 'st-on' : 'st-warn')} /> {d.status}
+                    <span className={'dot ' + (d.enabled === false ? 'st-off' : d.status === '待切片' ? 'st-warn' : 'st-on')} /> {d.status}
                   </td>
-                  <td className="mono">{d.titleHash.slice(0, 12)}</td>
+                  <td>
+                    <span className="chip outline">{d.groupKey || 'default'}</span>
+                    {d.version != null && <span className="dim" style={{ marginLeft: 6 }}>v{d.version}</span>}
+                    {d.sourceSuffix && <span className="dim" style={{ marginLeft: 6 }}>{d.sourceSuffix}</span>}
+                  </td>
+                  <td className="mono">{(d.contentHash || d.titleHash).slice(0, 12)}</td>
                   <td className="dim">{d.ago}</td>
                 </tr>
               ))}
