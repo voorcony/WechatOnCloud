@@ -219,6 +219,16 @@ export interface InstanceEmployee {
   permissionKeys: string[]; // allowlist 键（安全），供渲染中文 chips
 }
 
+// 知识库文档（安全字段：hash / suffix / 计数 / 更新时间），供知识库页与工具页复用。
+export interface KnowledgeDoc {
+  key: string;
+  label: string; // 「文档 ···suffix」（脱敏，非原始标题）
+  titleHash: string;
+  chunks: number;
+  ago: string;
+  sliced: boolean;
+}
+
 export interface AiConsoleModel {
   instances: InstanceWithStatus[];
   loaded: boolean;
@@ -230,6 +240,10 @@ export interface AiConsoleModel {
   pendingTotal: number;
   actions: ApprovalAction[];
   instanceEmployees: Record<string, InstanceEmployee>; // 按可见实例 id
+  knowledgeDocs: KnowledgeDoc[]; // 知识库文档（脱敏）
+  knowledgeDocCount: number;
+  knowledgeChunkCount: number;
+  grantedKeys: string[]; // 可见员工/实例被授予过的能力键并集（权限 / 记忆 / 审批）
 }
 
 interface Core {
@@ -238,6 +252,14 @@ interface Core {
   pendingTotal: number;
   actions: ApprovalAction[];
   instanceEmployees: Record<string, InstanceEmployee>;
+  knowledgeDocs: KnowledgeDoc[];
+  knowledgeDocCount: number;
+  knowledgeChunkCount: number;
+  grantedKeys: string[];
+}
+
+function docLabel(suffix: string): string {
+  return suffix ? `文档 ···${suffix}` : '未命名文档';
 }
 
 function buildReal(c: AiConsolePayload, wocById: Map<string, InstanceWithStatus>): Core {
@@ -324,7 +346,37 @@ function buildReal(c: AiConsolePayload, wocById: Map<string, InstanceWithStatus>
       permissionKeys: ic.permission_keys ?? [],
     };
   }
-  return { customers, pendingCounts, pendingTotal, actions, instanceEmployees };
+
+  // 知识库文档（脱敏）。
+  const k = c.knowledge_summary;
+  const knowledgeDocs: KnowledgeDoc[] = (k?.documents ?? []).map((d) => ({
+    key: String(d.document_id),
+    label: docLabel(d.title_suffix),
+    titleHash: d.title_hash,
+    chunks: d.chunk_count,
+    ago: d.updated_at ? agoText(minutesSince(d.updated_at) ?? 0) : '—',
+    sliced: d.chunk_count > 0,
+  }));
+
+  // 可见员工/实例被授予过的能力键并集（权限 / 记忆 / 审批），供工具页派生启用态。
+  const granted = new Set<string>();
+  for (const ic of c.instance_cards) (ic.permission_keys ?? []).forEach((x) => granted.add(x));
+  for (const e of c.employee_cards) {
+    (e.approval_policy_keys ?? []).forEach((x) => granted.add(x));
+    (e.memory_policy_keys ?? []).forEach((x) => granted.add(x));
+  }
+
+  return {
+    customers,
+    pendingCounts,
+    pendingTotal,
+    actions,
+    instanceEmployees,
+    knowledgeDocs,
+    knowledgeDocCount: k?.document_count ?? knowledgeDocs.length,
+    knowledgeChunkCount: k?.chunk_count ?? knowledgeDocs.reduce((s, d) => s + d.chunks, 0),
+    grantedKeys: [...granted],
+  };
 }
 
 const DEMO_PERMS = ['read_history', 'auto_reply', 'send_message', 'contact_remark', 'group_operation', 'memory_write', 'profile_update'];
@@ -391,7 +443,39 @@ function buildDemo(instances: InstanceWithStatus[]): Core {
   };
   const pendingTotal = Object.values(pendingCounts).reduce((s, v) => s + v, 0);
   const actions = buildActions(pendingCounts, slots);
-  return { customers, pendingCounts, pendingTotal, actions, instanceEmployees };
+
+  // 演示知识库（deterministic）：实例存在才给几篇脱敏文档。
+  const DEMO_DOC_NAMES = ['退换货政策', '商品参数手册', '售后话术库', '大促活动规则', '常见问题 FAQ'];
+  const docN = instances.length ? 2 + (seedOf('kb' + instances.length) % 4) : 0;
+  const knowledgeDocs: KnowledgeDoc[] = Array.from({ length: docN }, (_, i) => {
+    const seed = seedOf('doc' + i + instances.length);
+    return {
+      key: 'demo-doc-' + i,
+      label: docLabel((seed % 65536).toString(16).slice(0, 4)),
+      titleHash: (seed * 2654435761).toString(16).slice(0, 12),
+      chunks: 3 + (seed % 24),
+      ago: agoText(30 + (seed % 4000)),
+      sliced: true,
+    };
+  });
+  void DEMO_DOC_NAMES; // 名称仅示意，不展示原始标题（安全红线）
+  const knowledgeChunkCount = knowledgeDocs.reduce((s, d) => s + d.chunks, 0);
+
+  // 演示已授予能力键：绑定员工的权限键并集。
+  const granted = new Set<string>();
+  Object.values(instanceEmployees).forEach((e) => e.permissionKeys.forEach((x) => granted.add(x)));
+
+  return {
+    customers,
+    pendingCounts,
+    pendingTotal,
+    actions,
+    instanceEmployees,
+    knowledgeDocs,
+    knowledgeDocCount: knowledgeDocs.length,
+    knowledgeChunkCount,
+    grantedKeys: [...granted],
+  };
 }
 
 export function useAiConsoleModel(): AiConsoleModel {

@@ -116,3 +116,22 @@ ai-wechat payload 只出实例 **hash/suffix**（`instance_id_hash`），不出 
 - 绑定入口接真实绑定协议，签发受权限约束的 token（仍限于当前账号可见实例）。
 - 待确认接人审 API，人工确认后才对目标微信实例执行真实发送动作。
 - 生产环境把 WOC 实例 id 作为 ai-wechat 侧的实例 handle 落库，使可见实例 hash 与 `instance_id_hash` 天然对齐。
+
+## 2026-07-13：按新 AI Console 设计稿对齐 10 模块
+
+用户提供了新的 `index.html` / `app.js` / `styles.css` 原型，要求以该设计稿为主，而不是只在现有 WOC 页面上小修小补。本轮把设计稿的 10 个产品入口落到 React 路由，同时继续复用 WOC 登录态、RBAC、实例授权与 ai-wechat safe management payload。
+
+| 设计稿模块 | WOC 路由 | 接入状态 |
+| --- | --- | --- |
+| 总览 | `/` | 真实 safe API + demo fallback |
+| 对话 | `/inbox` | 三栏结构；仅展示 hash/count/status/stage/risk 等安全概览，正文进入实例桌面接管 |
+| 客户 | `/customers` | 真实 safe API |
+| AI 员工 | `/ai-employees` | 真实 safe API + 既有写路径占位 |
+| 知识库 | `/knowledge` | `knowledge_summary` + 导入入口；命中回放待后端 |
+| 工具与工作流 | `/tools` | `aiCapabilities.ts` 模块化 capability registry，按权限键/状态派生启用态 |
+| 待确认 | `/approvals` | 真实 safe API；人审写路径待后端 |
+| 监控 | `/monitor` | 真实 safe API / demo fallback |
+| 团队 | `/team` | 复用 WOC 用户/RBAC，只读展示，增删改回 `/admin` |
+| 系统设置 | `/settings` | 数据源/安全策略只读；模型路由/预算/Webhook/审计导出为 disabled 占位 |
+
+新增页面：`Inbox.tsx`、`Knowledge.tsx`、`Tools.tsx`、`Team.tsx`、`Settings.tsx`；新增能力注册表：`aiCapabilities.ts`。这些页面只消费 `useAiConsoleModel()` 输出的安全 VM 与 `useInstances()` / `useAuth()`，不直接读 SQLite、不展示 raw chat / reply 原文 / token / 知识库原文 / 绑定串明文。没有后端写路径的操作保留产品位并明确 disabled / 待接入，避免假成功。
