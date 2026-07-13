@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAiConsoleModel } from './aiConsoleModel';
 import {
   CAPABILITIES,
+  CAP_MODULES,
   CAP_RISK_LABEL,
   deriveCapabilityState,
   buildWorkflow,
@@ -44,6 +45,20 @@ const WF_EDGES: [number, number][] = [
   [4, 5],
 ];
 
+
+function moduleTone(on: number, total: number): string {
+  if (total <= 0) return 'outline';
+  if (on === total) return 'brand';
+  if (on > 0) return 'warn';
+  return 'outline';
+}
+function capMetricText(m: ReturnType<typeof useAiConsoleModel>): string {
+  const send = `发送 ${m.health.sendExecuted}/${m.health.sendVerified}`;
+  const kb = `KB ${m.knowledgeDocCount} 文档 / ${m.knowledgeChunkCount} 切片`;
+  const vision = m.health.visionSeen ? `视觉 ${m.health.visionSource}` : '视觉未上报';
+  return `${kb} · ${send} · ${vision}`;
+}
+
 const KIND_TAG: Record<FlowKind, string> = {
   trigger: 'trigger',
   llm: 'llm',
@@ -79,6 +94,15 @@ export default function Tools({ onOpenMenu }: { onOpenMenu: () => void }) {
   const states = useMemo(() => CAPABILITIES.map((c) => deriveCapabilityState(c, m.real, granted)), [m.real, granted]);
   const activeCount = states.filter((s) => s.on).length;
   const highRisk = CAPABILITIES.filter((c) => c.risk === 'high').length;
+  const moduleStats = useMemo(() =>
+    CAP_MODULES.map((mod) => {
+      const rows = states.filter((s) => s.cap.module === mod.key);
+      const on = rows.filter((s) => s.on).length;
+      const gated = rows.filter((s) => s.needApproval).length;
+      return { ...mod, total: rows.length, on, gated };
+    }),
+    [states],
+  );
   const flow = useMemo(
     () => buildWorkflow(m.knowledgeDocCount, GUARDRAIL_COUNT, m.pendingTotal),
     [m.knowledgeDocCount, m.pendingTotal],
@@ -89,7 +113,7 @@ export default function Tools({ onOpenMenu }: { onOpenMenu: () => void }) {
       <div className="page-h">
         <div>
           <h1>工具与工作流</h1>
-          <p>AI 微信员工的能力库与运行链路：{activeCount}/{CAPABILITIES.length} 项能力已启用 · {highRisk} 项高风险外发动作恒经人工确认。</p>
+          <p>AI 微信员工的能力库与运行链路：{activeCount}/{CAPABILITIES.length} 项能力已启用 · {highRisk} 项高风险外发动作恒经人工确认 · {capMetricText(m)}。</p>
         </div>
         <div className="act">
           <button className="btn" disabled title="能力导入 / 编排写路径后端接入后启用">
@@ -112,8 +136,31 @@ export default function Tools({ onOpenMenu }: { onOpenMenu: () => void }) {
           </div>
         ))}
 
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-h">
+          <span className="title">能力运营态</span>
+          <span className="chip outline" style={{ marginLeft: 'auto' }}>只读 · 来自安全摘要 / 权限键 / KB 计数</span>
+        </div>
+        <div className="card-b">
+          <div className="grid-4">
+            <div className="mini-stat"><span>知识库</span><b>{m.knowledgeDocCount} / {m.knowledgeChunkCount}</b></div>
+            <div className="mini-stat"><span>视觉运行时</span><b className={m.health.visionSeen ? '' : 'warn'}>{m.health.visionSeen ? '已上报' : '未上报'}</b></div>
+            <div className="mini-stat"><span>发送成功 / 失败</span><b className={m.health.sendFailed ? 'danger' : ''}>{m.health.sendVerified}/{m.health.sendFailed}</b></div>
+            <div className="mini-stat"><span>待人工确认</span><b className={m.pendingTotal ? 'warn' : ''}>{m.pendingTotal}</b></div>
+          </div>
+          <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+            {moduleStats.map((mod) => (
+              <span key={mod.key} className={'chip ' + moduleTone(mod.on, mod.total)}>
+                {mod.label} {mod.on}/{mod.total}{mod.gated ? ` · 人审${mod.gated}` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* 工具库 */}
-      <div className="card">
+      <div className="card" style={{ marginTop: 16 }}>
         <div className="card-h">
           <span className="title">工具库</span>
           <span className="chip outline" style={{ marginLeft: 8 }}>{CAPABILITIES.length} 项能力</span>
@@ -133,6 +180,9 @@ export default function Tools({ onOpenMenu }: { onOpenMenu: () => void }) {
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.cap.name}</div>
                   <p className="desc">{s.cap.desc}</p>
+                  <div className="dim" style={{ fontSize: 11.5, marginTop: -4 }}>
+                    状态来源：{s.cap.statusKind === 'permission' ? `权限键 ${s.cap.permKey ?? '—'}` : s.cap.statusKind === 'runtime' ? '运行时摘要' : s.cap.statusKind === 'gated' ? `权限键 ${s.cap.permKey ?? '—'} + 人审闸门` : '运维摘要'}
+                  </div>
                   <div className="row1" style={{ marginTop: 2 }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)' }}>
                       <span className={'dot ' + s.stateCls} />
