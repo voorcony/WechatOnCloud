@@ -99,7 +99,14 @@ import {
   getFontFamily,
 } from './docker.js';
 import { createSession, getSession, destroySession, destroyUserSessions, SESSION_TTL_MS } from './sessions.js';
-import { buildConsoleResponse, createAiEmployeeBindPayload, importAiEmployeeKnowledge } from './ai-employee.js';
+import {
+  buildConsoleResponse,
+  createAiEmployeeBindPayload,
+  importAiEmployeeKnowledge,
+  applyAiEmployeeTemplate,
+  saveAiEmployeePolicy,
+  runAiEmployeeAutoReplyTest,
+} from './ai-employee.js';
 import { parseHost, parseAllowedHosts, isRequestHostAllowed } from './host-guard.js';
 import { CURRENT_VERSION, versionInfo, ensureChecked, checkForUpdate, startUpdateChecker } from './version.js';
 import { triggerSelfUpdate } from './self-update.js';
@@ -441,6 +448,44 @@ app.post('/api/ai-employees/knowledge/import', async (req, reply) => {
   );
   if (!result) return reply.code(503).send({ error: 'AI 员工知识库导入服务未配置或不可用' });
   return result;
+});
+
+// PR5：可编辑人格 + 自动回复策略（写路径代理）。后端命令缺失 / 未部署时返回结构化 unavailable
+// （HTTP 200，{ ok:false, mode:'unavailable' }），前端据此 inline 提示、绝不假装成功；见 ./ai-employee.ts。
+const parseEmployeeId = (raw: unknown): number => Math.floor(Number(raw));
+app.post('/api/ai-employees/:employeeId/apply-template', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  if (u.role !== 'admin') return reply.code(403).send({ error: '仅管理员可编辑 AI 员工人格' });
+  const employeeId = parseEmployeeId((req.params as any).employeeId);
+  const templateKey = String((req.body as any)?.templateKey ?? 'game_boost_support');
+  return applyAiEmployeeTemplate(employeeId, templateKey, (code) =>
+    appendPanelLog('WARN', `[ai-employee] apply-template ${code}`),
+  );
+});
+
+app.post('/api/ai-employees/:employeeId/policy', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  if (u.role !== 'admin') return reply.code(403).send({ error: '仅管理员可保存自动回复策略' });
+  const employeeId = parseEmployeeId((req.params as any).employeeId);
+  const body = (req.body as any) ?? {};
+  return saveAiEmployeePolicy(
+    employeeId,
+    { persona: body.persona, autoReply: body.autoReply },
+    (code) => appendPanelLog('WARN', `[ai-employee] set-policy ${code}`),
+  );
+});
+
+app.post('/api/ai-employees/:employeeId/auto-reply-test', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  if (u.role !== 'admin') return reply.code(403).send({ error: '仅管理员可试运行自动回复' });
+  const employeeId = parseEmployeeId((req.params as any).employeeId);
+  const sample = String((req.body as any)?.sample ?? '');
+  return runAiEmployeeAutoReplyTest(employeeId, sample, (code) =>
+    appendPanelLog('WARN', `[ai-employee] auto-reply-test ${code}`),
+  );
 });
 
 // 用户自助「卡死自愈」：当客户端检测到 VNC 多次干净重连仍连不上（多半是实例 KasmVNC 的 ws 接收器卡死——

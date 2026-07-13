@@ -72,7 +72,14 @@ export function computeTextHash(text: string): string {
 
 // ---------- 子进程调用 CLI ----------
 // 只读、无 shell、带超时；成功返回解析后的 payload，失败一律抛 coded Error（上层转 fallback）。
-function runCli(cfg: AiEmployeeConfig, subcommand: 'console' | 'create-bind' | 'import-kb-dir', extraArgs: string[] = []): Promise<any> {
+type CliSubcommand =
+  | 'console'
+  | 'create-bind'
+  | 'import-kb-dir'
+  | 'apply-template'
+  | 'set-policy'
+  | 'auto-reply-test';
+function runCli(cfg: AiEmployeeConfig, subcommand: CliSubcommand, extraArgs: string[] = []): Promise<any> {
   return new Promise((resolve, reject) => {
     execFile(
       cfg.python,
@@ -562,5 +569,203 @@ export async function createAiEmployeeBindPayload(log?: (code: string) => void):
   } catch (e) {
     log?.((e as Error).message || 'cli_error');
     return null;
+  }
+}
+
+// ---------- PR5：可编辑人格 + 自动回复策略（兼容式代理） ----------
+// 后端分支 ai-wechat-employee feat/game-boost-auto-reply 会新增 CLI 子命令
+// （apply-template / set-policy / auto-reply-test）暴露安全字段与写路径。
+// 本层保持 fail-safe：未配置 / 命令缺失 / 子进程失败 → 一律返回结构化 unavailable，
+// 绝不 500、绝不假装成功，也绝不把 stderr 原文透给前端。
+//
+// 数据安全：入参只接受人格模板文本 + policy/guardrail allowlist 键；出参只回
+// hash/suffix/keys/status/decision 等安全字段，绝不回聊天正文 / reply 原文 / token。
+
+// 自动回复授权模式（三档）：关闭 / 只生成建议 / 测试自动发送。
+const AUTO_REPLY_MODES = ['disabled', 'suggest_only', 'auto_send_test'] as const;
+// 生效范围（白名单会话为占位）。
+const AUTO_REPLY_SCOPES = ['current_instance', 'bound_instances', 'whitelist'] as const;
+// 强制人审触发（guardrail allowlist 键）：退款 / 封号 / 付款 / 外挂 / 链接 / 大额订单 / 投诉。
+const GUARDRAIL_KEYS = ['refund', 'ban', 'payment', 'cheat', 'link', 'large_order', 'complaint'] as const;
+// 岗位（售前 / 售中 / 售后）与语气（allowlist）。
+const PERSONA_POSTS = ['pre_sale', 'in_sale', 'after_sale'] as const;
+const PERSONA_TONES = ['professional', 'fast', 'human_like', 'not_pushy'] as const;
+
+export interface AiActionUnavailable {
+  ok: false;
+  mode: 'unavailable';
+  reason: 'backend_command_missing' | 'not_configured' | 'invalid_request';
+}
+const unavailable = (reason: AiActionUnavailable['reason']): AiActionUnavailable => ({
+  ok: false,
+  mode: 'unavailable',
+  reason,
+});
+
+const boundedText = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const pickAllowed = (v: unknown, allowed: readonly string[]): string[] =>
+  Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && allowed.includes(x)))] : [];
+
+// 入参 policy → 只保留 allowlist 字段并做长度收敛，绝不整块透传前端对象。
+export interface PolicyInput {
+  persona?: unknown;
+  autoReply?: unknown;
+}
+interface SanitizedPolicy {
+  persona: {
+    display_name: string;
+    service_domain: string;
+    post: string;
+    tones: string[];
+    goals: string;
+    forbidden: string;
+  };
+  auto_reply: {
+    mode: string;
+    scope: string;
+    rate_limit_seconds: number;
+    rate_limit_count: number;
+    guardrail_keys: string[];
+  };
+}
+function sanitizePolicy(input: PolicyInput): SanitizedPolicy {
+  const persona = (input?.persona ?? {}) as Record<string, unknown>;
+  const auto = (input?.autoReply ?? {}) as Record<string, unknown>;
+  const mode = typeof auto.mode === 'string' && (AUTO_REPLY_MODES as readonly string[]).includes(auto.mode) ? auto.mode : 'suggest_only';
+  const scope = typeof auto.scope === 'string' && (AUTO_REPLY_SCOPES as readonly string[]).includes(auto.scope) ? auto.scope : 'current_instance';
+  const post = typeof persona.post === 'string' && (PERSONA_POSTS as readonly string[]).includes(persona.post) ? persona.post : 'pre_sale';
+  return {
+    persona: {
+      display_name: boundedText(persona.displayName, 60),
+      service_domain: boundedText(persona.serviceDomain, 60),
+      post,
+      tones: pickAllowed(persona.tones, PERSONA_TONES),
+      goals: boundedText(persona.goals, 2000),
+      forbidden: boundedText(persona.forbidden, 2000),
+    },
+    auto_reply: {
+      mode,
+      scope,
+      rate_limit_seconds: Math.min(3600, Math.max(0, Math.floor(num(auto.rateLimitSeconds) ?? 60))),
+      rate_limit_count: Math.min(100, Math.max(1, Math.floor(num(auto.rateLimitCount) ?? 1))),
+      guardrail_keys: pickAllowed(auto.guardrails, GUARDRAIL_KEYS),
+    },
+  };
+}
+
+export interface ApplyTemplateResult {
+  ok: true;
+  mode: 'applied';
+  employee_id: number;
+  template_key: string;
+  persona_hash: string;
+  policy_keys: string[];
+  guardrail_keys: string[];
+}
+export async function applyAiEmployeeTemplate(
+  employeeId: number,
+  templateKey: string,
+  log?: (code: string) => void,
+): Promise<ApplyTemplateResult | AiActionUnavailable> {
+  if (!Number.isInteger(employeeId) || employeeId <= 0) return unavailable('invalid_request');
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) return unavailable('not_configured');
+  const key = boundedText(templateKey, 64) || 'game_boost_support';
+  try {
+    const raw = await runCli(cfg, 'apply-template', ['--employee-id', String(employeeId), '--template', key]);
+    if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'apply_template' || raw.ok === false) {
+      return unavailable('backend_command_missing');
+    }
+    return {
+      ok: true,
+      mode: 'applied',
+      employee_id: num(raw.employee_id) ?? employeeId,
+      template_key: str(raw.template_key) ?? key,
+      persona_hash: str(raw.persona_hash) ?? '',
+      policy_keys: pickStringArray(raw.policy_keys),
+      guardrail_keys: pickStringArray(raw.guardrail_keys),
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'cli_error');
+    return unavailable('backend_command_missing');
+  }
+}
+
+export interface SavePolicyResult {
+  ok: true;
+  mode: 'saved';
+  employee_id: number;
+  auto_reply_mode: string;
+  scope: string;
+  rate_limit_seconds: number;
+  guardrail_keys: string[];
+  persona_hash: string;
+}
+export async function saveAiEmployeePolicy(
+  employeeId: number,
+  input: PolicyInput,
+  log?: (code: string) => void,
+): Promise<SavePolicyResult | AiActionUnavailable> {
+  if (!Number.isInteger(employeeId) || employeeId <= 0) return unavailable('invalid_request');
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) return unavailable('not_configured');
+  const policy = sanitizePolicy(input);
+  try {
+    const raw = await runCli(cfg, 'set-policy', ['--employee-id', String(employeeId), '--payload', JSON.stringify(policy)]);
+    if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'set_policy' || raw.ok === false) {
+      return unavailable('backend_command_missing');
+    }
+    return {
+      ok: true,
+      mode: 'saved',
+      employee_id: num(raw.employee_id) ?? employeeId,
+      auto_reply_mode: str(raw.auto_reply_mode) ?? policy.auto_reply.mode,
+      scope: str(raw.scope) ?? policy.auto_reply.scope,
+      rate_limit_seconds: num(raw.rate_limit_seconds) ?? policy.auto_reply.rate_limit_seconds,
+      guardrail_keys: pickStringArray(raw.guardrail_keys),
+      persona_hash: str(raw.persona_hash) ?? '',
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'cli_error');
+    return unavailable('backend_command_missing');
+  }
+}
+
+export interface AutoReplyTestResult {
+  ok: true;
+  mode: 'evaluated';
+  employee_id: number;
+  decision: string; // auto_send | needs_human | suggest_only
+  risk_level: string; // low | medium | high
+  matched_guardrails: string[];
+  redacted_summary: string;
+}
+export async function runAiEmployeeAutoReplyTest(
+  employeeId: number,
+  sampleText: string,
+  log?: (code: string) => void,
+): Promise<AutoReplyTestResult | AiActionUnavailable> {
+  if (!Number.isInteger(employeeId) || employeeId <= 0) return unavailable('invalid_request');
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) return unavailable('not_configured');
+  const sample = boundedText(sampleText, 500);
+  if (!sample) return unavailable('invalid_request');
+  try {
+    const raw = await runCli(cfg, 'auto-reply-test', ['--employee-id', String(employeeId), '--sample', sample]);
+    if (!raw || raw.schema_version !== SCHEMA_VERSION || raw.page !== 'auto_reply_test' || raw.ok === false) {
+      return unavailable('backend_command_missing');
+    }
+    return {
+      ok: true,
+      mode: 'evaluated',
+      employee_id: num(raw.employee_id) ?? employeeId,
+      decision: str(raw.decision) ?? 'needs_human',
+      risk_level: str(raw.risk_level) ?? 'medium',
+      matched_guardrails: pickStringArray(raw.matched_guardrails),
+      redacted_summary: str(raw.redacted_summary) ?? '',
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'cli_error');
+    return unavailable('backend_command_missing');
   }
 }

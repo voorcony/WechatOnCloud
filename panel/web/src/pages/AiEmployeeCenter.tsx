@@ -16,6 +16,8 @@ import {
   type AiKnowledgeSummary,
   type AiBindPayloadResponse,
   type AiKnowledgeImportResponse,
+  type AiPersonaDraft,
+  type AiAutoReplyDraft,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -65,6 +67,63 @@ const ROLE_BOUNDARY: Record<string, string> = {
 };
 const roleBoundary = (roleCn: string): string =>
   ROLE_BOUNDARY[roleCn] ?? 'AI 员工仅在授权的微信实例内工作；发送、改备注、群操作等敏感动作统一进入待确认队列，由人工确认后执行。';
+
+// ---------- PR5：可编辑人格 + 自动回复策略 allowlist ----------
+const PERSONA_POSTS: { key: string; label: string }[] = [
+  { key: 'pre_sale', label: '售前' },
+  { key: 'in_sale', label: '售中' },
+  { key: 'after_sale', label: '售后' },
+];
+const PERSONA_TONES: { key: string; label: string }[] = [
+  { key: 'professional', label: '专业' },
+  { key: 'fast', label: '快速' },
+  { key: 'human_like', label: '像真人' },
+  { key: 'not_pushy', label: '不油腻' },
+];
+// 强制人审触发（guardrail allowlist 键）：退款 / 封号 / 付款 / 外挂 / 链接 / 大额订单 / 投诉。
+const GUARDRAILS: { key: string; label: string }[] = [
+  { key: 'refund', label: '退款' },
+  { key: 'ban', label: '封号' },
+  { key: 'payment', label: '付款' },
+  { key: 'cheat', label: '外挂' },
+  { key: 'link', label: '外部链接' },
+  { key: 'large_order', label: '大额订单' },
+  { key: 'complaint', label: '投诉' },
+];
+const AUTO_MODE_LABELS: Record<string, string> = {
+  disabled: '已关闭',
+  suggest_only: '只生成建议',
+  auto_send_test: '测试自动发送',
+};
+const SCOPE_OPTIONS: { key: string; label: string; hint: string }[] = [
+  { key: 'current_instance', label: '仅当前实例', hint: '只在该 AI 员工绑定的当前实例生效' },
+  { key: 'bound_instances', label: '已绑定实例', hint: '该员工绑定的全部可见实例' },
+  { key: 'whitelist', label: '白名单会话', hint: '仅白名单会话（UI 占位，后端接入后启用）' },
+];
+const TEST_DECISION_LABELS: Record<string, { t: string; cls: string }> = {
+  auto_send: { t: '可自动发送', cls: 'st-on' },
+  suggest_only: { t: '仅生成建议', cls: 'st-warn' },
+  needs_human: { t: '强制人工确认', cls: 'st-off' },
+};
+
+// 一键「游戏代练客服模板」：人格 + 自动回复策略默认值（安全优先——默认只生成建议，不自动外发）。
+const GAME_BOOST_PERSONA: AiPersonaDraft = {
+  displayName: '代练客服小助手',
+  serviceDomain: '游戏代练客服',
+  post: 'pre_sale',
+  tones: ['professional', 'fast', 'human_like', 'not_pushy'],
+  goals:
+    '收集客户需求：游戏 / 区服 / 平台、当前段位与目标段位、预算范围、时限要求、是否需要陪玩或代练，并沉淀为客户画像。',
+  forbidden:
+    '禁止承诺 100% 不封号 / 稳定不掉分；禁止提供或推荐违规外挂、脚本、第三方作弊工具；禁止诱导客户提供账号密码 / 支付密码 / 短信验证码等敏感凭证；禁止承诺代练必赢或虚构战绩。',
+};
+const GAME_BOOST_POLICY: AiAutoReplyDraft = {
+  mode: 'suggest_only',
+  scope: 'current_instance',
+  rateLimitSeconds: 60,
+  rateLimitCount: 1,
+  guardrails: ['refund', 'ban', 'payment', 'cheat', 'link', 'large_order', 'complaint'],
+};
 
 // ---------- 真实数据的中文标签映射（未知值回退原字符串，绝不显示 raw 未知对象） ----------
 const ROLE_LABELS: Record<string, string> = {
@@ -818,6 +877,9 @@ function EmployeeDetail({
         </div>
       </div>
 
+      {/* 人格配置 + 自动回复策略（PR5：可编辑） */}
+      <PersonaPolicyEditor emp={emp} demo={demo} />
+
       {/* 负责微信 */}
       <div className="ai-sec">
         <div className="ai-sec-title">
@@ -957,6 +1019,329 @@ function EmployeeDetail({
       </div>
       {demo && <div className="ai-note">以上为演示数据（deterministic 占位）。接入真实数据源后，此处为该 AI 员工的真实身份 / 权限 / 客户 / 运行。</div>}
     </div>
+  );
+}
+
+// ==================== 人格配置 + 自动回复策略（PR5） ====================
+type Notice = { tone: 'ok' | 'warn' | 'err'; text: string } | null;
+
+function unavailableText(reason: string): string {
+  if (reason === 'not_configured' || reason === 'backend_command_missing')
+    return '后端自动回复能力尚未部署，策略未真正保存生效（未假装成功）。你填写的草稿已在本地保留，待后端就绪后再次保存即可下发。';
+  if (reason === 'invalid_request') return '请求参数无效，请检查后重试。';
+  return '后端暂不可用，未生效。';
+}
+
+function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) {
+  // 真实模式下 emp.key = String(employee_id)；演示模式没有真实 id，写操作 disabled 并提示。
+  const employeeId = demo ? null : Number.isFinite(Number(emp.key)) ? Number(emp.key) : null;
+
+  const [persona, setPersona] = useState<AiPersonaDraft>({
+    displayName: emp.displayName,
+    serviceDomain: '',
+    post: 'pre_sale',
+    tones: [],
+    goals: '',
+    forbidden: '',
+  });
+  const [ar, setAr] = useState<AiAutoReplyDraft>({
+    mode: 'disabled',
+    scope: 'current_instance',
+    rateLimitSeconds: 60,
+    rateLimitCount: 1,
+    guardrails: GUARDRAILS.map((g) => g.key),
+  });
+  const [sample, setSample] = useState('');
+  const [testResult, setTestResult] = useState<{ decision: string; risk: string; matched: string[]; summary: string } | null>(null);
+  const [busy, setBusy] = useState<'' | 'save' | 'template' | 'test'>('');
+  const [notice, setNotice] = useState<Notice>(null);
+
+  const enabled = ar.mode !== 'disabled';
+  const autoSend = ar.mode === 'auto_send_test';
+
+  const setPost = (post: string) => setPersona((p) => ({ ...p, post }));
+  const toggleTone = (key: string) =>
+    setPersona((p) => ({ ...p, tones: p.tones.includes(key) ? p.tones.filter((t) => t !== key) : [...p.tones, key] }));
+  const toggleGuardrail = (key: string) =>
+    setAr((a) => ({ ...a, guardrails: a.guardrails.includes(key) ? a.guardrails.filter((g) => g !== key) : [...a.guardrails, key] }));
+  const toggleEnabled = () => setAr((a) => ({ ...a, mode: a.mode === 'disabled' ? 'suggest_only' : 'disabled' }));
+  const setMode = (mode: string) => setAr((a) => ({ ...a, mode }));
+
+  const applyTemplate = async () => {
+    // 先本地填充模板（无论后端是否就绪，用户都能看到 / 编辑），再尝试下发到后端。
+    setPersona(GAME_BOOST_PERSONA);
+    setAr(GAME_BOOST_POLICY);
+    setTestResult(null);
+    if (employeeId == null) {
+      setNotice({ tone: 'warn', text: '已按「游戏代练客服模板」填充表单。演示模式无法下发到后端，接入真实数据源后可保存生效。' });
+      return;
+    }
+    setBusy('template');
+    setNotice(null);
+    try {
+      const r = await api.applyAiEmployeeTemplate(employeeId, 'game_boost_support');
+      if (r.ok) setNotice({ tone: 'ok', text: `已应用游戏代练客服模板并下发到后端（persona ${r.persona_hash.slice(0, 8) || '—'}）。` });
+      else setNotice({ tone: 'warn', text: '已在本地按模板填充表单。' + unavailableText(r.reason) });
+    } catch (e: any) {
+      setNotice({ tone: 'err', text: e?.message || '应用模板失败' });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const savePolicy = async () => {
+    if (employeeId == null) {
+      setNotice({ tone: 'warn', text: '演示模式无法保存到后端。接入真实 AI 员工数据源后，此处保存会下发人格与自动回复策略。' });
+      return;
+    }
+    setBusy('save');
+    setNotice(null);
+    try {
+      const r = await api.saveAiEmployeePolicy(employeeId, persona, ar);
+      if (r.ok)
+        setNotice({
+          tone: 'ok',
+          text: `策略已保存并下发。自动回复：${AUTO_MODE_LABELS[r.auto_reply_mode] ?? r.auto_reply_mode} · 限频 ${r.rate_limit_seconds}s · 人审触发 ${r.guardrail_keys.length} 项。`,
+        });
+      else setNotice({ tone: 'warn', text: unavailableText(r.reason) });
+    } catch (e: any) {
+      setNotice({ tone: 'err', text: e?.message || '保存失败' });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const runTest = async () => {
+    if (employeeId == null || !sample.trim()) return;
+    setBusy('test');
+    setNotice(null);
+    setTestResult(null);
+    try {
+      const r = await api.runAiEmployeeAutoReplyTest(employeeId, sample.trim());
+      if (r.ok) setTestResult({ decision: r.decision, risk: r.risk_level, matched: r.matched_guardrails, summary: r.redacted_summary });
+      else setNotice({ tone: 'warn', text: unavailableText(r.reason) });
+    } catch (e: any) {
+      setNotice({ tone: 'err', text: e?.message || '试运行失败' });
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <>
+      {/* 1. 人格配置区 */}
+      <div className="ai-sec">
+        <div className="ai-sec-title">
+          人格配置
+          <span className="ai-sec-count">显示名 · 业务域 · 岗位 · 语气 · 目标 · 禁止承诺</span>
+          <button className="btn-text ai-sec-more" disabled={busy !== ''} onClick={applyTemplate}>
+            应用游戏代练客服模板 ›
+          </button>
+        </div>
+        <div className="ai-note" style={{ marginBottom: 12 }}>
+          当前后端仅下发人格指纹（name ···{emp.nameSuffix || '——'} · hash {emp.nameHash.slice(0, 8)} · 职责 {emp.respLen} 字），
+          未开放明文编辑快照。以下表单可基于模板填充并提交到新 API 下发；不展示任何聊天正文 / 原始职责原文。
+        </div>
+        <div className="ai-form-grid">
+          <label className="ai-form-field">
+            <span className="ai-form-label">显示名 / 客服名</span>
+            <input className="input" value={persona.displayName} maxLength={60}
+              onChange={(e) => setPersona((p) => ({ ...p, displayName: e.target.value }))} placeholder="如：代练客服小助手" />
+          </label>
+          <label className="ai-form-field">
+            <span className="ai-form-label">业务域</span>
+            <input className="input" value={persona.serviceDomain} maxLength={60}
+              onChange={(e) => setPersona((p) => ({ ...p, serviceDomain: e.target.value }))} placeholder="如：游戏代练客服" />
+          </label>
+        </div>
+        <div className="ai-form-field" style={{ marginTop: 12 }}>
+          <span className="ai-form-label">岗位</span>
+          <div className="ai-choice-row">
+            {PERSONA_POSTS.map((p) => (
+              <button key={p.key} className={'ai-choice' + (persona.post === p.key ? ' on' : '')} onClick={() => setPost(p.key)}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="ai-form-field" style={{ marginTop: 12 }}>
+          <span className="ai-form-label">语气</span>
+          <div className="ai-choice-row">
+            {PERSONA_TONES.map((t) => (
+              <button key={t.key} className={'ai-choice' + (persona.tones.includes(t.key) ? ' on' : '')} onClick={() => toggleTone(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="ai-form-field" style={{ marginTop: 12 }}>
+          <span className="ai-form-label">目标（引导收集的信息）</span>
+          <textarea className="input ai-form-textarea" value={persona.goals} maxLength={2000}
+            onChange={(e) => setPersona((p) => ({ ...p, goals: e.target.value }))}
+            placeholder="如：收集游戏 / 区服 / 段位 / 目标段位 / 预算 / 时限，并沉淀客户画像" />
+        </label>
+        <label className="ai-form-field" style={{ marginTop: 12 }}>
+          <span className="ai-form-label">禁止承诺 / 红线</span>
+          <textarea className="input ai-form-textarea" value={persona.forbidden} maxLength={2000}
+            onChange={(e) => setPersona((p) => ({ ...p, forbidden: e.target.value }))}
+            placeholder="如：不承诺 100% 不封号；不提供违规外挂；不诱导索取账号 / 支付密码 / 验证码" />
+        </label>
+      </div>
+
+      {/* 2. 自动回复策略区 */}
+      <div className="ai-sec">
+        <div className="ai-sec-title">
+          自动回复策略
+          <span className={'ai-mode-badge ai-mode-' + ar.mode}>{AUTO_MODE_LABELS[ar.mode]}</span>
+        </div>
+
+        <div className="ai-toggle-row">
+          <button
+            className={'ai-switch' + (enabled ? ' on' : '')}
+            role="switch"
+            aria-checked={enabled}
+            onClick={toggleEnabled}
+          >
+            <span className="ai-switch-knob" />
+          </button>
+          <div className="ai-toggle-text">
+            <b>自动回复测试模式</b>
+            <span>关闭后 AI 只沉淀画像、不生成自动回复；开启后按下方模式处理。</span>
+          </div>
+        </div>
+
+        {enabled && (
+          <div className="ai-form-field" style={{ marginTop: 14 }}>
+            <span className="ai-form-label">模式</span>
+            <div className="ai-radio-row">
+              <button className={'ai-radio' + (ar.mode === 'suggest_only' ? ' on' : '')} onClick={() => setMode('suggest_only')}>
+                <span className="ai-radio-dot" />
+                <span className="ai-radio-body">
+                  <b>只生成建议</b>
+                  <span>AI 起草回复进入待确认队列，人工确认后才发送（推荐）。</span>
+                </span>
+              </button>
+              <button className={'ai-radio' + (autoSend ? ' on' : '')} onClick={() => setMode('auto_send_test')}>
+                <span className="ai-radio-dot" />
+                <span className="ai-radio-body">
+                  <b>测试自动发送</b>
+                  <span>仅对低风险咨询自动发送，命中人审触发词的仍转人工。</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {autoSend && (
+          <div className="ai-risk-banner">
+            <span className="ai-risk-ic">⚠️</span>
+            <div>
+              <b>测试自动发送已开启 · 请谨慎</b>
+              <ul>
+                <li>仅对<b>测试实例 / 白名单会话 / 低风险咨询</b>自动发送，高风险一律转人工确认。</li>
+                <li>付款 / 退款 / 封号 / 外挂 / 外部链接 / 大额订单 / 投诉等命中人审触发词的消息进入待确认队列。</li>
+                <li>所有自动 / 人工动作都会写入 audit 审计；真实发送由后端二次 gating，前端不直接触发微信动作。</li>
+                <li>后端未就绪时不会真正开启，本页只保存策略草稿、不假装生效。</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {enabled && (
+          <>
+            <div className="ai-form-field" style={{ marginTop: 14 }}>
+              <span className="ai-form-label">生效范围</span>
+              <div className="ai-choice-row">
+                {SCOPE_OPTIONS.map((s) => (
+                  <button key={s.key} className={'ai-choice' + (ar.scope === s.key ? ' on' : '')} title={s.hint}
+                    onClick={() => setAr((a) => ({ ...a, scope: s.key }))}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ai-form-hint">{SCOPE_OPTIONS.find((s) => s.key === ar.scope)?.hint}</span>
+            </div>
+
+            <div className="ai-form-grid" style={{ marginTop: 14 }}>
+              <label className="ai-form-field">
+                <span className="ai-form-label">频率限制 · 时间窗（秒）</span>
+                <input className="input" type="number" min={0} max={3600} value={ar.rateLimitSeconds}
+                  onChange={(e) => setAr((a) => ({ ...a, rateLimitSeconds: Math.max(0, Math.min(3600, Math.floor(Number(e.target.value) || 0))) }))} />
+              </label>
+              <label className="ai-form-field">
+                <span className="ai-form-label">频率限制 · 最多条数</span>
+                <input className="input" type="number" min={1} max={100} value={ar.rateLimitCount}
+                  onChange={(e) => setAr((a) => ({ ...a, rateLimitCount: Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1))) }))} />
+              </label>
+            </div>
+            <span className="ai-form-hint">每客户每 {ar.rateLimitSeconds} 秒最多自动发送 {ar.rateLimitCount} 条。</span>
+          </>
+        )}
+
+        <div className="ai-form-field" style={{ marginTop: 14 }}>
+          <span className="ai-form-label">强制人审触发（命中即转人工确认）</span>
+          <div className="ai-choice-row">
+            {GUARDRAILS.map((g) => (
+              <button key={g.key} className={'ai-choice ai-guard' + (ar.guardrails.includes(g.key) ? ' on' : '')} onClick={() => toggleGuardrail(g.key)}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 安全文案 */}
+        <div className="ai-safety">
+          <b>安全说明</b>
+          <ul>
+            <li>自动发送只对低风险咨询生效；付款 / 退款 / 封号 / 外挂 / 链接等进入待确认。</li>
+            <li>所有动作写入 audit 审计；真实发送由后端 gating，本页不直接触发真实微信动作。</li>
+            <li>无真实后端能力时不假装开启成功，仅保存本地策略草稿。</li>
+          </ul>
+        </div>
+
+        {/* 试运行判断 */}
+        <div className="ai-form-field" style={{ marginTop: 14 }}>
+          <span className="ai-form-label">试运行判断（输入一条示例咨询，看会自动发送还是转人工）</span>
+          <textarea className="input ai-form-textarea" value={sample} maxLength={500}
+            onChange={(e) => setSample(e.target.value)}
+            placeholder="如：王者荣耀想从黄金上到钻石，大概多少钱多久？" />
+        </div>
+        {testResult && (
+          <div className="ai-test-result">
+            <span className={'ai-dot ' + (TEST_DECISION_LABELS[testResult.decision]?.cls ?? 'st-warn')} />
+            <b>{TEST_DECISION_LABELS[testResult.decision]?.t ?? testResult.decision}</b>
+            <span className="ai-card-sep">·</span> 风险 {RISK_LABEL[riskOf(testResult.risk)]}
+            {testResult.matched.length > 0 && (
+              <>
+                <span className="ai-card-sep">·</span> 命中人审：
+                {testResult.matched.map((k) => GUARDRAILS.find((g) => g.key === k)?.label ?? k).join(' / ')}
+              </>
+            )}
+            {testResult.summary && <div className="ai-note" style={{ marginTop: 6 }}>{testResult.summary}</div>}
+          </div>
+        )}
+
+        {notice && (
+          <div className={notice.tone === 'ok' ? 'ai-ok' : notice.tone === 'err' ? 'ai-warn' : 'ai-warn'} style={{ marginTop: 12 }}>
+            {notice.text}
+          </div>
+        )}
+
+        <div className="ai-bind-actions">
+          <button className="btn btn-primary" disabled={busy !== ''} onClick={savePolicy}>
+            {busy === 'save' ? '保存中…' : '保存策略'}
+          </button>
+          <button className="btn" disabled={busy !== ''} onClick={applyTemplate}>
+            {busy === 'template' ? '应用中…' : '应用游戏代练客服模板'}
+          </button>
+          <button className="btn" disabled={busy !== '' || employeeId == null || !sample.trim()} onClick={runTest}
+            title={employeeId == null ? '接入真实数据源后可试运行' : ''}>
+            {busy === 'test' ? '判断中…' : '试运行判断'}
+          </button>
+          {employeeId == null && <span className="ai-bind-hint">演示模式：接入真实 AI 员工数据源后可保存 / 试运行</span>}
+        </div>
+      </div>
+    </>
   );
 }
 
