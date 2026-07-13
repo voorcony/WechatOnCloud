@@ -10,6 +10,8 @@ import Admin from './pages/Admin';
 import AiEmployeeCenter, { AiEmployeeIcon } from './pages/AiEmployeeCenter';
 import MonitorWall from './pages/MonitorWall';
 import Console, { ConsoleIcon } from './pages/Console';
+import Customers from './pages/Customers';
+import Approvals from './pages/Approvals';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
 
@@ -159,6 +161,8 @@ export default function AppShell() {
           <Routes>
             <Route path="/" element={<Console onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
+            <Route path="/customers" element={<Customers onOpenMenu={openMenu} />} />
+            <Route path="/approvals" element={<Approvals onOpenMenu={openMenu} />} />
             <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
             <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />} />
             <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
@@ -180,11 +184,8 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
   const isAdmin = user?.role === 'admin';
   const go = (p: string) => nav(p);
 
-  // AI 员工中心承载多个产品模块（客户 / 待确认 …），用 ?tab= 直达并高亮对应侧栏项
-  const tab = new URLSearchParams(loc.search).get('tab');
+  // 客户画像 / 待确认已升级为独立产品路由（/customers、/approvals）；AI 员工中心内仍保留同名 tab。
   const onAi = loc.pathname === '/ai-employees';
-  const aiTabActive = (t: string) => onAi && tab === t;
-  const aiMain = onAi && (!tab || (tab !== 'customers' && tab !== 'pending'));
 
   return (
     <aside className="sidebar">
@@ -203,15 +204,15 @@ function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggl
           <span className="sb-ic">{ConsoleIcon}</span>
           {!collapsed && <span className="sb-label">总控台</span>}
         </button>
-        <button className={'sb-item' + (aiMain ? ' on' : '')} onClick={() => go('/ai-employees')} title="AI 员工">
+        <button className={'sb-item' + (onAi ? ' on' : '')} onClick={() => go('/ai-employees')} title="AI 员工">
           <span className="sb-ic">{AiEmployeeIcon}</span>
           {!collapsed && <span className="sb-label">AI 员工</span>}
         </button>
-        <button className={'sb-item' + (aiTabActive('customers') ? ' on' : '')} onClick={() => go('/ai-employees?tab=customers')} title="客户">
+        <button className={'sb-item' + (loc.pathname === '/customers' ? ' on' : '')} onClick={() => go('/customers')} title="客户画像 CRM">
           <span className="sb-ic">{Icon.customers}</span>
           {!collapsed && <span className="sb-label">客户</span>}
         </button>
-        <button className={'sb-item' + (aiTabActive('pending') ? ' on' : '')} onClick={() => go('/ai-employees?tab=pending')} title="待确认">
+        <button className={'sb-item' + (loc.pathname === '/approvals' ? ' on' : '')} onClick={() => go('/approvals')} title="待确认中心">
           <span className="sb-ic">{Icon.pending}</span>
           {!collapsed && <span className="sb-label">待确认</span>}
         </button>
