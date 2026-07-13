@@ -19,6 +19,7 @@ import {
   type AiKnowledgeImportResponse,
   type AiPersonaDraft,
   type AiAutoReplyDraft,
+  type AiEmployeeServiceHealthResponse,
 } from '../api';
 import { InstanceIcon } from '../AppIcon';
 
@@ -724,6 +725,14 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
     loadConsole();
   }, []);
 
+  const [serviceHealth, setServiceHealth] = useState<AiEmployeeServiceHealthResponse | null>(null);
+  useEffect(() => {
+    api
+      .aiEmployeeServiceHealth()
+      .then((r) => setServiceHealth(r))
+      .catch(() => setServiceHealth(null));
+  }, []);
+
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
   const wocById = useMemo(() => new Map(instances.map((i) => [i.id, i])), [instances]);
   const vm = useMemo<CenterVM>(
@@ -789,6 +798,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
       </div>
 
       <OperationsHealthCard health={vm.health} demo={!real} />
+      <ServiceHealthCard resp={serviceHealth} />
 
       <div className="tabs" role="tablist" style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--bg-elev)' }}>
         {SEGMENTS.map((s) => (
@@ -853,6 +863,46 @@ function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boo
           <span className="chip outline">视觉：{health.visionText}</span>
           <span className="chip outline">客户：{health.customerText}</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function ServiceHealthCard({ resp }: { resp: AiEmployeeServiceHealthResponse | null }) {
+  if (!resp) return null;
+  const h = resp.mode === 'real' ? resp.health : null;
+  const state = h?.service_state ?? 'unknown';
+  const tone = state === 'online' ? 'brand' : state === 'degraded' ? 'warn' : state === 'offline' ? 'outline' : 'danger';
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-h">
+        <span className="title">AI 员工服务状态</span>
+        <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>{resp.mode === 'real' ? state : '未配置'}</span>
+      </div>
+      <div className="card-b">
+        {h ? (
+          <>
+            <div className="grid-4">
+              <div className="mini-stat"><span>进程</span><b>{h.pid_alive ? '存活' : '未运行'}</b></div>
+              <div className="mini-stat"><span>视觉状态</span><b>{h.vision_status}</b></div>
+              <div className="mini-stat"><span>最近轮次</span><b>{h.last_iteration ?? '—'}</b></div>
+              <div className="mini-stat"><span>最近错误</span><b className={h.last_error_present ? 'warn' : ''}>{h.last_error_present ? '有' : '无'}</b></div>
+            </div>
+            <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+              <span className="chip outline">OCR events: {String(h.recent_ocr.events_inserted ?? '—')}</span>
+              <span className="chip outline">duplicates: {String(h.recent_ocr.duplicates ?? '—')}</span>
+              <span className="chip outline">reply: {String(h.recent_reply.decision ?? '—')}</span>
+              <span className="chip outline">send: {String(h.recent_send.action_status ?? '—')}</span>
+              <span className="chip outline">log: {String(h.log_summary.path_suffix ?? '—')}</span>
+            </div>
+            <div className="dim" style={{ marginTop: 8, fontSize: 11 }}>
+              只读 health/status；当前页面不提供启动、停止或重启按钮，不触发真实微信动作。
+            </div>
+          </>
+        ) : (
+          <div className="safe-note">AI 员工服务 health 接口未配置或不可用；本卡只读，不影响现有 console 数据。</div>
+        )}
       </div>
     </div>
   );

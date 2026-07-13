@@ -102,6 +102,7 @@ import { createSession, getSession, destroySession, destroyUserSessions, SESSION
 import {
   buildConsoleResponse,
   buildApprovalQueueResponse,
+  buildServiceHealthResponse,
   createAiEmployeeBindPayload,
   importAiEmployeeKnowledge,
   applyAiEmployeeTemplate,
@@ -428,6 +429,13 @@ app.get('/api/ai-employees/console', async (req, reply) => {
   return buildConsoleResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] console ${code}`));
 });
 
+
+
+app.get('/api/ai-employees/service-health', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  return buildServiceHealthResponse((code) => appendPanelLog('WARN', `[ai-employee] service-health ${code}`));
+});
 
 app.get('/api/ai-employees/approval-queue', async (req, reply) => {
   const u = requireAuth(req, reply);

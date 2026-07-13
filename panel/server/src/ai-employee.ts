@@ -110,6 +110,105 @@ function runCli(cfg: AiEmployeeConfig, subcommand: CliSubcommand, extraArgs: str
   });
 }
 
+
+export interface AiServiceHealthResponse {
+  enabled: boolean;
+  mode: 'real' | 'demo_fallback';
+  reason?: 'not_configured' | 'unavailable';
+  source?: 'ai-wechat-employee';
+  health: null | {
+    status: string;
+    service_state: string;
+    pid_alive: boolean;
+    healthy: boolean;
+    last_iteration: number | null;
+    last_poll_at: string | null;
+    vision_status: string;
+    recent_ocr: Record<string, number | string | boolean | null>;
+    recent_reply: Record<string, number | string | boolean | null>;
+    recent_send: Record<string, number | string | boolean | null>;
+    last_error_present: boolean;
+    last_error_hash: string | null;
+    log_summary: Record<string, number | string | boolean | null>;
+  };
+}
+
+function serviceCliPath(cfg: AiEmployeeConfig): string {
+  return process.env.WOC_AI_EMPLOYEE_SERVICE_CLI || path.join(path.dirname(cfg.cli), 'woc_ai_employee_service.py');
+}
+
+function pickFlatObject(v: unknown): Record<string, number | string | boolean | null> {
+  const out: Record<string, number | string | boolean | null> = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === 'number' && Number.isFinite(val)) out[k] = val;
+    else if (typeof val === 'string' || typeof val === 'boolean' || val === null) out[k] = val;
+  }
+  return out;
+}
+
+function pickServiceHealth(v: any): NonNullable<AiServiceHealthResponse['health']> {
+  return {
+    status: str(v?.status) ?? '',
+    service_state: str(v?.service_state) ?? 'unknown',
+    pid_alive: !!v?.pid_alive,
+    healthy: !!v?.healthy,
+    last_iteration: num(v?.last_iteration),
+    last_poll_at: str(v?.last_poll_at),
+    vision_status: str(v?.vision_status) ?? 'unknown',
+    recent_ocr: pickFlatObject(v?.recent_ocr),
+    recent_reply: pickFlatObject(v?.recent_reply),
+    recent_send: pickFlatObject(v?.recent_send),
+    last_error_present: !!v?.last_error_present,
+    last_error_hash: str(v?.last_error_hash),
+    log_summary: pickFlatObject(v?.log_summary),
+  };
+}
+
+function runServiceHealthCli(cfg: AiEmployeeConfig): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const serviceCli = serviceCliPath(cfg);
+    if (!existsSync(serviceCli)) return reject(new Error('service_cli_missing'));
+    execFile(
+      cfg.python,
+      [
+        serviceCli,
+        'health',
+        '--db',
+        cfg.db,
+        '--tenant',
+        cfg.tenant,
+        '--employee-id',
+        String(cfg.secretaryId),
+      ],
+      { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      (_err, stdout) => {
+        // health/status intentionally returns non-zero when offline/degraded. If it
+        // produced valid JSON, treat it as a successful read-only health response.
+        try {
+          resolve(JSON.parse(stdout));
+        } catch {
+          reject(new Error('service_health_bad_json'));
+        }
+      },
+    );
+  });
+}
+
+export async function buildServiceHealthResponse(log?: (code: string) => void): Promise<AiServiceHealthResponse> {
+  const cfg = aiEmployeeConfig();
+  if (!isConfigured(cfg)) {
+    return { enabled: false, mode: 'demo_fallback', reason: 'not_configured', health: null };
+  }
+  try {
+    const raw = await runServiceHealthCli(cfg);
+    return { enabled: true, mode: 'real', source: 'ai-wechat-employee', health: pickServiceHealth(raw) };
+  } catch (e: any) {
+    log?.(e?.message || 'service_health_failed');
+    return { enabled: false, mode: 'demo_fallback', reason: 'unavailable', health: null };
+  }
+}
+
 // ---------- 出参类型（allowlist） ----------
 type TaskCounts = Record<string, number>;
 type RunCounts = Record<string, number>;
