@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { useInstances, statusOf } from '../AppShell';
-import { api, type InstanceWithStatus, type AiConsolePayload, type AiEmployeeConsoleResponse } from '../api';
+import { api, type InstanceWithStatus, type AiConsolePayload, type AiEmployeeConsoleResponse, type AiSafeSummary } from '../api';
 
 // 总览（AI Console 首页）—— 完全对标模板 Dashboard：
 //   4 KPI 卡 + (消息吞吐图 · 实例健康矩阵) + (待确认 · 今日任务 · 事件流) + AI 员工在岗。
@@ -53,6 +53,132 @@ const RUN_STATUS: Record<string, { t: string; cls: string }> = {
 const label = (m: Record<string, string>, k: string): string => m[k] ?? k;
 const ROLES = ['售前', '售后', '复购', '群运营'] as const;
 
+function safeMetric(s: AiSafeSummary | null | undefined, key: string): number {
+  const v = s?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+function safeString(s: AiSafeSummary | null | undefined, key: string, fallback = ''): string {
+  const v = s?.[key];
+  return typeof v === 'string' ? v : fallback;
+}
+function safeBool(s: AiSafeSummary | null | undefined, key: string): boolean {
+  const v = s?.[key];
+  return typeof v === 'boolean' ? v : false;
+}
+function cockpitTone(score: number): string {
+  if (score >= 5) return 'brand';
+  if (score >= 3) return 'warn';
+  return 'danger';
+}
+function boolText(v: boolean, yes: string, no: string): string {
+  return v ? yes : no;
+}
+interface CockpitSummary {
+  readyScore: number;
+  kbReady: boolean;
+  kbDocs: number;
+  kbChunks: number;
+  visionSeen: boolean;
+  visionSource: string;
+  serviceOnline: number;
+  serviceDegraded: number;
+  serviceState: string;
+  sendPlanned: number;
+  sendExecuted: number;
+  sendVerified: number;
+  sendFailed: number;
+  verificationPending: number;
+  pendingReplies: number;
+  needsHuman: number;
+}
+function buildCockpit(real: AiConsolePayload | null, fallback: ConsoleModel): CockpitSummary {
+  if (!real) {
+    return {
+      readyScore: 2,
+      kbReady: false,
+      kbDocs: 0,
+      kbChunks: 0,
+      visionSeen: false,
+      visionSource: 'demo',
+      serviceOnline: fallback.activeEmployees,
+      serviceDegraded: 0,
+      serviceState: 'demo',
+      sendPlanned: 0,
+      sendExecuted: fallback.handled,
+      sendVerified: 0,
+      sendFailed: 0,
+      verificationPending: fallback.pendingTotal,
+      pendingReplies: fallback.pendingTotal,
+      needsHuman: fallback.pendingTotal,
+    };
+  }
+  const service = real.service_status_summary;
+  const vision = real.vision_status_summary;
+  const send = real.send_status_summary;
+  const approval = real.approval_status_summary;
+  const kbDocs = real.knowledge_summary?.document_count ?? 0;
+  const kbChunks = real.knowledge_summary?.chunk_count ?? 0;
+  const kbReady = kbDocs > 0 && kbChunks > 0;
+  const visionSeen = safeBool(vision, 'vision_runtime_seen');
+  const serviceOnline = safeMetric(service, 'online_count');
+  const sendVerified = safeMetric(send, 'verified_count');
+  const sendFailed = safeMetric(send, 'failed_count');
+  const pendingReplies = safeMetric(approval, 'pending_reply_jobs');
+  const checks = [true, kbReady, visionSeen, serviceOnline > 0, sendFailed === 0, pendingReplies >= 0];
+  return {
+    readyScore: checks.filter(Boolean).length,
+    kbReady,
+    kbDocs,
+    kbChunks,
+    visionSeen,
+    visionSource: safeString(vision, 'source', 'none'),
+    serviceOnline,
+    serviceDegraded: safeMetric(service, 'degraded_count'),
+    serviceState: safeString(service, 'latest_service_state', 'unknown'),
+    sendPlanned: safeMetric(send, 'planned_count'),
+    sendExecuted: safeMetric(send, 'executed_count'),
+    sendVerified,
+    sendFailed,
+    verificationPending: safeMetric(send, 'verification_pending_count'),
+    pendingReplies,
+    needsHuman: safeMetric(approval, 'needs_human_count'),
+  };
+}
+
+function CockpitCard({ c, real, nav }: { c: CockpitSummary; real: boolean; nav: (to: string) => void }) {
+  const tone = cockpitTone(c.readyScore);
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-h">
+        <span className="title">AI 员工运营驾驶舱</span>
+        <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>{c.readyScore}/6 就绪</span>
+      </div>
+      <div className="card-b">
+        <div className="grid-4">
+          <div className="mini-stat"><span>数据源</span><b className={real ? '' : 'warn'}>{real ? '真实' : '演示'}</b></div>
+          <div className="mini-stat"><span>知识库</span><b className={c.kbReady ? '' : 'warn'}>{c.kbDocs}/{c.kbChunks}</b></div>
+          <div className="mini-stat"><span>视觉运行时</span><b className={c.visionSeen ? '' : 'warn'}>{boolText(c.visionSeen, '已上报', '未上报')}</b></div>
+          <div className="mini-stat"><span>发送失败</span><b className={c.sendFailed ? 'danger' : ''}>{c.sendFailed}</b></div>
+        </div>
+        <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+          <span className="chip outline">service: {c.serviceState} · online {c.serviceOnline} / degraded {c.serviceDegraded}</span>
+          <span className="chip outline">vision: {c.visionSource}</span>
+          <span className="chip outline">send planned/executed/verified: {c.sendPlanned}/{c.sendExecuted}/{c.sendVerified}</span>
+          {c.verificationPending > 0 && <span className="chip warn">取证待确认 {c.verificationPending}</span>}
+          {c.needsHuman > 0 && <span className="chip warn">人审 {c.needsHuman}</span>}
+        </div>
+        <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn sm" onClick={() => nav('/monitor')}>监控墙 ›</button>
+          <button className="btn sm" onClick={() => nav('/approvals')}>待确认 ›</button>
+          <button className="btn sm" onClick={() => nav('/settings')}>配置完整度 ›</button>
+          <button className="btn sm" onClick={() => nav('/tools')}>能力面板 ›</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 interface TimelineItem { key: string; emp: string; act: string; inst: string; summary: string; status: { t: string; cls: string }; ago: string; }
 interface EmpRow { key: string; name: string; role: string; statusText: string; statusCls: string; tasks: number; runs: number; }
 interface CustomerRow { key: string; code: string; inst: string; stage: string; intent: number | null; risk: 'high' | 'medium' | 'low'; messages: number; ago: string; }
@@ -102,6 +228,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
   const empty = loaded && instances.length === 0;
   const dataReady = loaded && probed;
   const autoRate = model.messages ? Math.round((model.handled / model.messages) * 100) : 0;
+  const cockpit = useMemo(() => buildCockpit(real, model), [real, model]);
   const chart = areaPath([28, 40, 44, 52, 60, 78, 92], 600, 180, 18);
   const chart2 = areaPath([16, 26, 30, 40, 46, 58, 70], 600, 180, 18);
 
@@ -165,7 +292,9 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
             </div>
           </div>
 
-          <div className="grid-2">
+          <CockpitCard c={cockpit} real={!!real} nav={nav} />
+
+          <div className="grid-2" style={{ marginTop: 16 }}>
             <div className="card">
               <div className="card-h">
                 <span className="title">最近 7 天消息吞吐</span>
