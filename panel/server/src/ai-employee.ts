@@ -149,10 +149,14 @@ export interface AiServiceRunsResponse {
 
 export interface AiServiceActionPlanResponse {
   ok: true;
-  mode: 'dry_run_disabled';
+  mode: 'dry_run_disabled' | 'execute_guard_blocked';
   enabled: boolean;
   action: 'start' | 'stop' | 'restart';
   executable: false;
+  execute_requested: boolean;
+  confirm_required: boolean;
+  admin_required: boolean;
+  block_reason: string | null;
   planned_command: string[];
   safety_checks: string[];
   warnings: string[];
@@ -201,10 +205,20 @@ function runServiceActionPlanCli(cfg: AiEmployeeConfig, action: ServiceAction): 
   });
 }
 
-export async function buildServiceActionPlan(action: unknown, log?: (code: string) => void): Promise<AiServiceActionPlanResponse> {
+export async function buildServiceActionPlan(action: unknown, options: { execute?: unknown; confirm?: unknown; isAdmin?: boolean } = {}, log?: (code: string) => void): Promise<AiServiceActionPlanResponse> {
   const cfg = aiEmployeeConfig();
   const selected = SERVICE_ACTIONS.includes(action as ServiceAction) ? (action as ServiceAction) : 'start';
   const serviceCli = serviceCliPath(cfg);
+  const executeRequested = options.execute === true;
+  const confirmed = options.confirm === true;
+  const isAdmin = options.isAdmin === true;
+  const blockReason = executeRequested
+    ? !isAdmin
+      ? 'admin_required'
+      : !confirmed
+        ? 'confirm_required'
+        : 'execute_path_disabled'
+    : null;
   let auditRecord: AiServiceActionPlanResponse['audit_record'] = null;
   if (isConfigured(cfg)) {
     try {
@@ -225,10 +239,14 @@ export async function buildServiceActionPlan(action: unknown, log?: (code: strin
   }
   return {
     ok: true,
-    mode: 'dry_run_disabled',
+    mode: executeRequested ? 'execute_guard_blocked' : 'dry_run_disabled',
     enabled: isConfigured(cfg),
     action: selected,
     executable: false,
+    execute_requested: executeRequested,
+    confirm_required: executeRequested && !confirmed,
+    admin_required: executeRequested && !isAdmin,
+    block_reason: blockReason,
     planned_command: [
       cfg.python,
       serviceCli,
@@ -247,7 +265,7 @@ export async function buildServiceActionPlan(action: unknown, log?: (code: strin
       '确认日志和返回值只展示 hash/count/status，不展示聊天正文',
     ],
     warnings: [
-      '当前接口只返回计划，不执行 start/stop/restart',
+      '当前接口只返回计划；execute=true 也会被守卫拦截，不执行 start/stop/restart',
       '正式开启写操作前必须补二次确认、审计日志和生产 E2E',
     ],
     next_required: 'enable_execute_path_with_confirmation_and_audit',

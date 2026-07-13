@@ -438,8 +438,12 @@ app.get('/api/ai-employees/console', async (req, reply) => {
 app.post('/api/ai-employees/service-action', async (req, reply) => {
   const u = requireAuth(req, reply);
   if (!u) return;
-  const action = (req.body as any)?.action;
-  return buildServiceActionPlan(action, (code) => appendPanelLog('WARN', `[ai-employee] service-action-plan ${code}`));
+  const body = (req.body as any) || {};
+  return buildServiceActionPlan(
+    body.action,
+    { execute: body.execute, confirm: body.confirm, isAdmin: u.role === 'admin' },
+    (code) => appendPanelLog('WARN', `[ai-employee] service-action-plan ${code}`),
+  );
 });
 
 app.get('/api/ai-employees/service-runs', async (req, reply) => {
