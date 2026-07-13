@@ -11,6 +11,15 @@ import { useAiConsoleModel } from './aiConsoleModel';
 // 内置强制人审触发词（与 AI 员工中心 GUARDRAILS 一致的只读 allowlist）。
 const GUARDRAILS = ['退款', '封号', '付款', '外挂', '外部链接', '大额订单', '投诉'];
 
+
+function readinessTone(ok: boolean, warn = false): string {
+  if (ok) return 'brand';
+  return warn ? 'warn' : 'danger';
+}
+function readinessText(ok: boolean, yes: string, no: string): string {
+  return ok ? yes : no;
+}
+
 const UploadIcon = (
   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" />
@@ -23,6 +32,14 @@ export default function Settings({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () =
   const { instances } = useInstances();
   const m = useAiConsoleModel();
   const isAdmin = user?.role === 'admin';
+  const granted = new Set(m.grantedKeys);
+  const hasKb = m.knowledgeDocCount > 0 && m.knowledgeChunkCount > 0;
+  const hasAutoReply = granted.has('auto_reply') || granted.has('reply');
+  const hasApprovalGate = m.pendingTotal >= 0;
+  const hasSendGate = granted.has('send_message') || m.health.sendPlanned > 0 || m.health.sendExecuted > 0;
+  const hasVision = m.health.visionSeen;
+  const readyItems = [m.real, hasKb, hasAutoReply, hasApprovalGate, hasSendGate, hasVision];
+  const readyCount = readyItems.filter(Boolean).length;
 
   const demoReason =
     m.demoReason === 'cannot_enforce_instance_filter'
@@ -57,7 +74,31 @@ export default function Settings({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () =
           </div>
         ))}
 
-      <div className="grid-2">
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-h">
+          <span className="title">AI 员工配置完整度</span>
+          <span className={'chip ' + readinessTone(readyCount >= 5, readyCount >= 3)} style={{ marginLeft: 'auto' }}>
+            {readyCount}/6 已就绪
+          </span>
+        </div>
+        <div className="card-b">
+          <div className="grid-4">
+            <div className="mini-stat"><span>数据源</span><b className={m.real ? '' : 'warn'}>{readinessText(m.real, '已接入', '未配置')}</b></div>
+            <div className="mini-stat"><span>知识库</span><b className={hasKb ? '' : 'warn'}>{m.knowledgeDocCount}/{m.knowledgeChunkCount}</b></div>
+            <div className="mini-stat"><span>自动回复</span><b className={hasAutoReply ? '' : 'warn'}>{readinessText(hasAutoReply, '已授权', '未授权')}</b></div>
+            <div className="mini-stat"><span>视觉运行时</span><b className={hasVision ? '' : 'warn'}>{readinessText(hasVision, '已上报', '未上报')}</b></div>
+          </div>
+          <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
+            <span className={'chip ' + readinessTone(hasApprovalGate, true)}>人审闸门：{readinessText(hasApprovalGate, '已启用', '待接入')}</span>
+            <span className={'chip ' + readinessTone(hasSendGate, true)}>发送闸门：{readinessText(hasSendGate, '已启用', '未授权')}</span>
+            <span className="chip outline">service_state: {m.health.serviceState}</span>
+            <span className="chip outline">send planned/executed/failed: {m.health.sendPlanned}/{m.health.sendExecuted}/{m.health.sendFailed}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-2" style={{ marginTop: 16 }}>
         {/* 通用（演示，不生效） */}
         <div className="card">
           <div className="card-h">
@@ -153,7 +194,7 @@ export default function Settings({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () =
         <div className="card">
           <div className="card-h">
             <span className="title">数据源与运行</span>
-            <span className="chip accent" style={{ marginLeft: 'auto' }}>真实只读</span>
+            <span className={'chip ' + readinessTone(m.real, true)} style={{ marginLeft: 'auto' }}>{m.real ? '真实只读' : '待配置'}</span>
           </div>
           <div className="card-b col" style={{ gap: 10 }}>
             <div className="row between">
@@ -173,7 +214,19 @@ export default function Settings({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () =
             </div>
             <div className="row between">
               <span className="muted">知识库</span>
-              <span>{m.knowledgeDocCount} 文档 · {m.knowledgeChunkCount} 切片</span>
+              <span>{m.knowledgeDocCount} 文档 · {m.knowledgeChunkCount} 切片 · {hasKb ? '可检索' : '待导入'}</span>
+            </div>
+            <div className="row between">
+              <span className="muted">自动回复策略</span>
+              <span>{hasAutoReply ? '已授予 auto_reply/reply 能力' : '未授予 auto_reply/reply 能力'}</span>
+            </div>
+            <div className="row between">
+              <span className="muted">视觉运行时</span>
+              <span>{hasVision ? `已上报 · ${m.health.visionSource}` : '未上报'}</span>
+            </div>
+            <div className="row between">
+              <span className="muted">发送安全闸门</span>
+              <span>{hasSendGate ? `planned ${m.health.sendPlanned} / failed ${m.health.sendFailed}` : '未授权 send_message'}</span>
             </div>
           </div>
         </div>
@@ -182,7 +235,7 @@ export default function Settings({ onOpenMenu: _onOpenMenu }: { onOpenMenu: () =
         <div className="card">
           <div className="card-h">
             <span className="title">安全与合规姿态</span>
-            <span className="chip accent" style={{ marginLeft: 'auto' }}>真实只读</span>
+            <span className="chip accent" style={{ marginLeft: 'auto' }}>强制生效</span>
           </div>
           <div className="card-b col" style={{ gap: 8 }}>
             <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
