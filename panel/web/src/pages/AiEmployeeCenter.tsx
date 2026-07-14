@@ -839,7 +839,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
         refreshedAt={serviceRefreshedAt}
         onRefresh={() => void refreshServiceState()}
         onStartObserveOnly={async () => {
-          if (!window.confirm('启动 observe-only AI 员工？\n\n只观察/记录，不发送微信；会 baseline 当前消息，避免处理历史消息。')) return;
+          if (!window.confirm('启动 AI 员工（观察模式）？\n\n当前只观察/记录，不发送微信；会 baseline 当前消息，避免处理历史消息。')) return;
           setStartingService(true);
           try {
             const r = await api.aiEmployeeServiceActionPlan('start', { execute: true, confirm: true });
@@ -850,7 +850,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
           }
         }}
         onStopObserveOnly={async () => {
-          if (!window.confirm('停止 observe-only AI 员工？\n\n只停止后台观察 daemon，不发送微信，也不清空数据。')) return;
+          if (!window.confirm('停止 AI 员工观察服务？\n\n只停止后台观察 daemon，不发送微信，也不清空数据。')) return;
           setStoppingService(true);
           try {
             const r = await api.aiEmployeeServiceActionPlan('stop', { execute: true, confirm: true });
@@ -983,7 +983,7 @@ function ServiceHealthCard({
               <span className="chip outline">log: {String(h.log_summary.path_suffix ?? '—')}</span>
             </div>
             <div className="dim" style={{ marginTop: 8, fontSize: 11 }}>
-              health/status/recent-runs 为只读；管理员可二次确认启动/停止 observe-only daemon，restart 与真实微信发送仍关闭。
+              管理员可二次确认启动/停止 AI 员工观察服务；当前模式只观察/记录，不自动发送微信。
             </div>
             {runs?.mode === 'real' && runs.runs.runs.length > 0 && (
               <div className="card" style={{ marginTop: 12, overflow: 'hidden' }}>
@@ -999,7 +999,7 @@ function ServiceHealthCard({
                         <td className="mono">#{r.run_id}</td>
                         <td><span className={'dot ' + (r.status === 'completed' ? 'st-on' : r.status === 'failed' ? 'st-off' : 'st-busy')} /> {r.status}</td>
                         <td className="dim mono">{r.redacted_summary || '—'}</td>
-                        <td className="dim">{r.started_at ? ago(r.started_at) : '—'}</td>
+                        <td className="dim">{r.started_at ? timeAgo(r.started_at) : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1055,19 +1055,20 @@ function ServiceActionPlanCard({
   return (
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <b>服务控制</b>
+        <b>AI 员工启动</b>
         <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
         {result && <span className={'chip ' + resultTone}>结果 {result.status}</span>}
-        <button className="btn primary" disabled={!canStart} onClick={onStartObserveOnly} title={isAdmin ? (pidAlive ? 'observe-only daemon 已在运行' : '二次确认后启动 observe-only，不发送微信') : '仅管理员可启动'}>
-          {starting ? '启动中…' : '启动观察'}
+        <button className="btn primary" disabled={!canStart} onClick={onStartObserveOnly} title={isAdmin ? (pidAlive ? 'AI 员工观察服务已在运行' : '二次确认后启动 AI 员工观察模式，不自动发送微信') : '当前子账号无启动权限，请用管理员账号启动'}>
+          {starting ? '启动中…' : '启动 AI 员工'}
         </button>
-        <button className="btn" disabled={!canStop} onClick={onStopObserveOnly} title={isAdmin ? (pidAlive ? '二次确认后停止 observe-only daemon' : 'observe-only daemon 未运行') : '仅管理员可停止'}>
-          {stopping ? '停止中…' : '停止观察'}
+        <button className="btn" disabled={!canStop} onClick={onStopObserveOnly} title={isAdmin ? (pidAlive ? '二次确认后停止 AI 员工观察服务' : 'AI 员工观察服务未运行') : '当前子账号无停止权限，请用管理员账号停止'}>
+          {stopping ? '停止中…' : '停止 AI 员工'}
         </button>
         <button className="btn" disabled title="restart 暂未开放">restart</button>
       </div>
+      {!isAdmin && <div className="dim" style={{ marginTop: 8 }}>当前账号是子账号：可以查看运行状态和审批详情；启动/停止 AI 员工需要管理员权限。</div>}
       <div className="dim" style={{ marginTop: 8 }}>
-        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信；停止观察只停止后台观察 daemon。当前状态：{result ? `${result.status} / health=${result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
+        启动 AI 员工会进入观察模式：先 baseline 当前消息，不处理历史消息，也不自动发送微信；停止只停止后台观察服务。当前状态：{result ? `${result.status} / health=${result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
       </div>
       {result && (
         <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>

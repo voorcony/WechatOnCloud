@@ -320,6 +320,21 @@ export interface AiApprovalSendActionCard {
   created_at: string | null;
   updated_at: string | null;
 }
+export interface AiApprovalDetailResponse {
+  ok: true;
+  mode: 'real' | 'unavailable' | 'not_found';
+  type: 'reply' | 'send';
+  id: number;
+  instance_id_hash?: string;
+  instance_id_suffix?: string;
+  woc_instance_id?: string | null;
+  conversation_key_hash?: string;
+  incoming_text?: string | null;
+  reply_text?: string | null;
+  reason?: string | null;
+  status?: string | null;
+}
+
 export interface AiApprovalEmployeeTaskCard {
   task_id: number;
   employee_id: number | null;
@@ -522,6 +537,8 @@ export const api = {
   // AI 员工中心：只读 console 快照（后端已按可见实例过滤 + allowlist；未配置则返回 demo_fallback）
   aiEmployeeConsole: () => req<AiEmployeeConsoleResponse>('/api/ai-employees/console'),
   aiEmployeeApprovalQueue: () => req<AiEmployeeApprovalQueueResponse>('/api/ai-employees/approval-queue'),
+  aiEmployeeApprovalDetail: (type: 'reply' | 'send', id: number) =>
+    req<AiApprovalDetailResponse>(`/api/ai-employees/approval-detail?type=${encodeURIComponent(type)}&id=${encodeURIComponent(String(id))}`),
   aiEmployeeServiceHealth: () => req<AiEmployeeServiceHealthResponse>('/api/ai-employees/service-health'),
   aiEmployeeServiceRuns: () => req<AiEmployeeServiceRunsResponse>('/api/ai-employees/service-runs'),
   aiEmployeeServiceActionPlan: (action: 'start' | 'stop' | 'restart', opts: { execute?: boolean; confirm?: boolean } = {}) =>
