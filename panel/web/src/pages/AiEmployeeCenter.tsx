@@ -731,6 +731,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const [serviceRuns, setServiceRuns] = useState<AiEmployeeServiceRunsResponse | null>(null);
   const [serviceActionPlan, setServiceActionPlan] = useState<AiServiceActionPlanResponse | null>(null);
   const [startingService, setStartingService] = useState(false);
+  const [stoppingService, setStoppingService] = useState(false);
   const refreshServiceState = () => {
     api
       .aiEmployeeServiceHealth()
@@ -820,6 +821,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
         actionPlan={serviceActionPlan}
         isAdmin={isAdmin}
         starting={startingService}
+        stopping={stoppingService}
         onStartObserveOnly={async () => {
           if (!window.confirm('启动 observe-only AI 员工？\n\n只观察/记录，不发送微信；会 baseline 当前消息，避免处理历史消息。')) return;
           setStartingService(true);
@@ -829,6 +831,17 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
             refreshServiceState();
           } finally {
             setStartingService(false);
+          }
+        }}
+        onStopObserveOnly={async () => {
+          if (!window.confirm('停止 observe-only AI 员工？\n\n只停止后台观察 daemon，不发送微信，也不清空数据。')) return;
+          setStoppingService(true);
+          try {
+            const r = await api.aiEmployeeServiceActionPlan('stop', { execute: true, confirm: true });
+            setServiceActionPlan(r);
+            refreshServiceState();
+          } finally {
+            setStoppingService(false);
           }
         }}
       />
@@ -902,7 +915,25 @@ function OperationsHealthCard({ health, demo }: { health: OpsHealthVM; demo: boo
 }
 
 
-function ServiceHealthCard({ resp, runs, actionPlan, isAdmin, starting, onStartObserveOnly }: { resp: AiEmployeeServiceHealthResponse | null; runs: AiEmployeeServiceRunsResponse | null; actionPlan: AiServiceActionPlanResponse | null; isAdmin: boolean; starting: boolean; onStartObserveOnly: () => void | Promise<void> }) {
+function ServiceHealthCard({
+  resp,
+  runs,
+  actionPlan,
+  isAdmin,
+  starting,
+  stopping,
+  onStartObserveOnly,
+  onStopObserveOnly,
+}: {
+  resp: AiEmployeeServiceHealthResponse | null;
+  runs: AiEmployeeServiceRunsResponse | null;
+  actionPlan: AiServiceActionPlanResponse | null;
+  isAdmin: boolean;
+  starting: boolean;
+  stopping: boolean;
+  onStartObserveOnly: () => void | Promise<void>;
+  onStopObserveOnly: () => void | Promise<void>;
+}) {
   if (!resp) return null;
   const h = resp.mode === 'real' ? resp.health : null;
   const state = h?.service_state ?? 'unknown';
@@ -956,7 +987,16 @@ function ServiceHealthCard({ resp, runs, actionPlan, isAdmin, starting, onStartO
             {runs?.mode === 'real' && runs.runs.runs.length === 0 && (
               <div className="safe-note" style={{ marginTop: 12 }}>暂无 service_lifecycle 运行记录。</div>
             )}
-            {actionPlan && <ServiceActionPlanCard plan={actionPlan} isAdmin={isAdmin} starting={starting} onStartObserveOnly={onStartObserveOnly} />}
+            {actionPlan && (
+              <ServiceActionPlanCard
+                plan={actionPlan}
+                isAdmin={isAdmin}
+                starting={starting}
+                stopping={stopping}
+                onStartObserveOnly={onStartObserveOnly}
+                onStopObserveOnly={onStopObserveOnly}
+              />
+            )}
           </>
         ) : (
           <div className="safe-note">AI 员工服务 health 接口未配置或不可用；本卡只读，不影响现有 console 数据。</div>
@@ -967,20 +1007,36 @@ function ServiceHealthCard({ resp, runs, actionPlan, isAdmin, starting, onStartO
 }
 
 
-function ServiceActionPlanCard({ plan, isAdmin, starting, onStartObserveOnly }: { plan: AiServiceActionPlanResponse; isAdmin: boolean; starting: boolean; onStartObserveOnly: () => void | Promise<void> }) {
+function ServiceActionPlanCard({
+  plan,
+  isAdmin,
+  starting,
+  stopping,
+  onStartObserveOnly,
+  onStopObserveOnly,
+}: {
+  plan: AiServiceActionPlanResponse;
+  isAdmin: boolean;
+  starting: boolean;
+  stopping: boolean;
+  onStartObserveOnly: () => void | Promise<void>;
+  onStopObserveOnly: () => void | Promise<void>;
+}) {
   return (
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b>服务控制</b>
         <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
-        <button className="btn primary" disabled={!isAdmin || starting} onClick={onStartObserveOnly} title={isAdmin ? '二次确认后启动 observe-only，不发送微信' : '仅管理员可启动'}>
+        <button className="btn primary" disabled={!isAdmin || starting || stopping} onClick={onStartObserveOnly} title={isAdmin ? '二次确认后启动 observe-only，不发送微信' : '仅管理员可启动'}>
           {starting ? '启动中…' : '启动观察'}
         </button>
-        <button className="btn" disabled title="stop 暂未开放">stop</button>
+        <button className="btn" disabled={!isAdmin || starting || stopping} onClick={onStopObserveOnly} title={isAdmin ? '二次确认后停止 observe-only daemon' : '仅管理员可停止'}>
+          {stopping ? '停止中…' : '停止观察'}
+        </button>
         <button className="btn" disabled title="restart 暂未开放">restart</button>
       </div>
       <div className="dim" style={{ marginTop: 8 }}>
-        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信。当前状态：{plan.execution_result ? `${plan.execution_result.status} / health=${plan.execution_result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
+        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信；停止观察只停止后台观察 daemon。当前状态：{plan.execution_result ? `${plan.execution_result.status} / health=${plan.execution_result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
       </div>
       <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
         {plan.safety_checks.slice(0, 4).map((x) => <span key={x} className="chip outline">{x}</span>)}

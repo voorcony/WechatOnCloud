@@ -183,6 +183,8 @@ export interface AiServiceActionPlanResponse {
   };
 }
 
+const HEALTH_CHECK_WAIT_MS = 1500;
+
 
 const SERVICE_ACTIONS = ['start', 'stop', 'restart'] as const;
 type ServiceAction = (typeof SERVICE_ACTIONS)[number];
@@ -202,33 +204,35 @@ function pickLifecycleRecord(v: any): AiServiceActionPlanResponse['audit_record'
   };
 }
 
-function runServiceStartObserveCli(cfg: AiEmployeeConfig): Promise<any> {
+function runServiceLifecycleCli(cfg: AiEmployeeConfig, action: 'start' | 'stop'): Promise<any> {
   return new Promise((resolve, reject) => {
     const serviceCli = serviceCliPath(cfg);
     if (!existsSync(serviceCli)) return reject(new Error('service_cli_missing'));
+    const args = [
+      serviceCli,
+      action,
+      '--db',
+      cfg.db,
+      '--tenant',
+      cfg.tenant,
+      '--employee-id',
+      String(cfg.secretaryId),
+      '--record-run',
+    ];
+    if (action === 'start') {
+      args.push('--python', cfg.python, '--reset-state');
+    }
     execFile(
       cfg.python,
-      [
-        serviceCli,
-        'start',
-        '--db',
-        cfg.db,
-        '--tenant',
-        cfg.tenant,
-        '--employee-id',
-        String(cfg.secretaryId),
-        '--python',
-        cfg.python,
-        '--record-run',
-        '--reset-state',
-      ],
+      args,
       { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
       (err, stdout) => {
         try {
           const parsed = JSON.parse(stdout);
           resolve(parsed);
         } catch {
-          reject(new Error((err as any)?.killed ? 'service_start_timeout' : 'service_start_bad_json'));
+          const timedOut = (err as any)?.killed;
+          reject(new Error(timedOut ? `service_${action}_timeout` : `service_${action}_bad_json`));
         }
       },
     );
@@ -279,8 +283,8 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
       ? 'admin_required'
       : !confirmed
         ? 'confirm_required'
-        : selected !== 'start'
-          ? 'only_start_supported'
+        : selected === 'restart'
+          ? 'restart_not_supported'
           : null
     : null;
   let auditRecord: AiServiceActionPlanResponse['audit_record'] = null;
@@ -294,11 +298,12 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
     }
   }
   let executionResult: AiServiceActionPlanResponse['execution_result'] = null;
-  const shouldExecuteStart = isConfigured(cfg) && executeRequested && confirmed && isAdmin && selected === 'start';
-  if (shouldExecuteStart) {
+  const shouldExecute = isConfigured(cfg) && executeRequested && confirmed && isAdmin && (selected === 'start' || selected === 'stop');
+  if (shouldExecute) {
     try {
-      const rawStart = await runServiceStartObserveCli(cfg);
-      await delay(1500);
+      const rawAction = await runServiceLifecycleCli(cfg, selected);
+      const waitMs = selected === 'start' ? HEALTH_CHECK_WAIT_MS : 0;
+      if (waitMs > 0) await delay(waitMs);
       let healthState: string | null = null;
       let healthPidAlive: boolean | null = null;
       try {
@@ -307,36 +312,37 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
         healthState = health.service_state;
         healthPidAlive = health.pid_alive;
       } catch (e: any) {
-        log?.(e?.message || 'service_start_health_check_failed');
+        log?.(e?.message || `service_${selected}_health_check_failed`);
       }
+      const status = str(rawAction?.status) ?? 'unknown';
       executionResult = {
-        status: str(rawStart?.status) ?? 'unknown',
-        pid_alive: ['running', 'already_running'].includes(str(rawStart?.status) ?? ''),
+        status,
+        pid_alive: selected === 'start' ? ['running', 'already_running'].includes(status) : healthPidAlive === true,
         health_state: healthState,
         health_pid_alive: healthPidAlive,
         health_checked: healthState !== null,
-        health_wait_ms: 1500,
-        record: pickLifecycleRecord(rawStart?.record),
+        health_wait_ms: waitMs,
+        record: pickLifecycleRecord(rawAction?.record),
       };
     } catch (e: any) {
-      log?.(e?.message || 'service_start_failed');
+      log?.(e?.message || `service_${selected}_failed`);
       executionResult = { status: 'failed', pid_alive: false, health_state: null, health_pid_alive: null, health_checked: false, health_wait_ms: 0, record: null };
     }
   }
   return {
     ok: true,
-    mode: shouldExecuteStart ? 'executed' : executeRequested ? 'execute_guard_blocked' : 'dry_run_disabled',
+    mode: shouldExecute ? 'executed' : executeRequested ? 'execute_guard_blocked' : 'dry_run_disabled',
     enabled: isConfigured(cfg),
     action: selected,
-    executable: shouldExecuteStart,
+    executable: shouldExecute,
     execute_requested: executeRequested,
     confirm_required: executeRequested && !confirmed,
     admin_required: executeRequested && !isAdmin,
-    block_reason: shouldExecuteStart ? null : blockReason,
+    block_reason: shouldExecute ? null : blockReason,
     planned_command: [
       cfg.python,
       serviceCli,
-      shouldExecuteStart ? 'start' : selected,
+      selected,
       '--db',
       cfg.db || '<configured-db>',
       '--tenant',
@@ -347,14 +353,14 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
     safety_checks: [
       '确认当前实例已登录且授权给该 AI 员工',
       '确认 daemon 启动会先 baseline 当前消息，不处理历史消息',
-      '确认自动发送仍受人审/安全词/频控闸门约束',
+      '确认 stop 仅停止 observe-only daemon，不触发任何微信动作',
       '确认日志和返回值只展示 hash/count/status，不展示聊天正文',
     ],
     warnings: [
-      '当前仅 start 在管理员二次确认后开放 observe-only；stop/restart 仍阻断',
+      '当前仅 start/stop 在管理员二次确认后开放；restart 仍阻断',
       'start 强制 --reset-state 且不传 --execute，不真实发送微信消息',
     ],
-    next_required: shouldExecuteStart ? 'verify_observe_only_daemon_health_before_send_execute' : 'enable_execute_path_with_confirmation_and_audit',
+    next_required: shouldExecute ? 'verify_service_lifecycle_health_and_runs' : 'enable_execute_path_with_confirmation_and_audit',
     audit_record: auditRecord,
     execution_result: executionResult,
   };
