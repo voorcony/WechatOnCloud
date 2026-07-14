@@ -1022,11 +1022,15 @@ function ServiceActionPlanCard({
   onStartObserveOnly: () => void | Promise<void>;
   onStopObserveOnly: () => void | Promise<void>;
 }) {
+  const result = plan.execution_result;
+  const record = result?.record ?? plan.audit_record;
+  const resultTone = result?.status === 'failed' ? 'danger' : plan.mode === 'executed' ? 'brand' : 'warn';
   return (
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b>服务控制</b>
         <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
+        {result && <span className={'chip ' + resultTone}>结果 {result.status}</span>}
         <button className="btn primary" disabled={!isAdmin || starting || stopping} onClick={onStartObserveOnly} title={isAdmin ? '二次确认后启动 observe-only，不发送微信' : '仅管理员可启动'}>
           {starting ? '启动中…' : '启动观察'}
         </button>
