@@ -961,7 +961,7 @@ function ServiceHealthCard({
               <span className="chip outline">log: {String(h.log_summary.path_suffix ?? '—')}</span>
             </div>
             <div className="dim" style={{ marginTop: 8, fontSize: 11 }}>
-              只读 health/status/recent-runs；当前页面不提供启动、停止或重启按钮，不触发真实微信动作。
+              health/status/recent-runs 为只读；管理员可二次确认启动/停止 observe-only daemon，restart 与真实微信发送仍关闭。
             </div>
             {runs?.mode === 'real' && runs.runs.runs.length > 0 && (
               <div className="card" style={{ marginTop: 12, overflow: 'hidden' }}>
