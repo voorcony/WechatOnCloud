@@ -553,6 +553,12 @@
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 .ai-console .kpi-grid.k6 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.ai-console .cockpit-card { width: 100%; }
+.ai-console .cockpit-body { display: flex; flex-direction: column; gap: 12px; }
+.ai-console .cockpit-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; }
+.ai-console .cockpit-meta-row,
+.ai-console .cockpit-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ai-console .cockpit-meta-row .chip { max-width: 100%; white-space: normal; line-height: 1.35; }
 .ai-console .kpi {
   background: var(--bg-elev); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow-1);

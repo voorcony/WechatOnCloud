@@ -148,26 +148,27 @@ function buildCockpit(real: AiConsolePayload | null, fallback: ConsoleModel): Co
 function CockpitCard({ c, real, nav }: { c: CockpitSummary; real: boolean; nav: (to: string) => void }) {
   const tone = cockpitTone(c.readyScore);
   return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <div className="card-h">
+    <div className="card cockpit-card" style={{ marginTop: 16 }}>
+      <div className="card-h cockpit-head">
         <span className="title">AI 员工运营驾驶舱</span>
         <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>{c.readyScore}/6 就绪</span>
       </div>
-      <div className="card-b">
-        <div className="grid-4">
+      <div className="card-b cockpit-body">
+        <div className="cockpit-status-grid">
           <div className="mini-stat"><span>数据源</span><b className={real ? '' : 'warn'}>{real ? '真实' : '演示'}</b></div>
           <div className="mini-stat"><span>知识库</span><b className={c.kbReady ? '' : 'warn'}>{c.kbDocs}/{c.kbChunks}</b></div>
           <div className="mini-stat"><span>视觉运行时</span><b className={c.visionSeen ? '' : 'warn'}>{boolText(c.visionSeen, '已上报', '未上报')}</b></div>
           <div className="mini-stat"><span>发送失败</span><b className={c.sendFailed ? 'danger' : ''}>{c.sendFailed}</b></div>
+          <div className="mini-stat"><span>服务状态</span><b className={c.serviceOnline > 0 ? '' : 'warn'}>{c.serviceOnline > 0 ? '在线' : c.serviceState}</b></div>
+          <div className="mini-stat"><span>待人审</span><b className={c.needsHuman ? 'warn' : ''}>{c.needsHuman}</b></div>
         </div>
-        <div className="row" style={{ marginTop: 10, flexWrap: 'wrap', gap: 6 }}>
-          <span className="chip outline">service: {c.serviceState} · online {c.serviceOnline} / degraded {c.serviceDegraded}</span>
-          <span className="chip outline">vision: {c.visionSource}</span>
-          <span className="chip outline">send planned/executed/verified: {c.sendPlanned}/{c.sendExecuted}/{c.sendVerified}</span>
+        <div className="cockpit-meta-row">
+          <span className="chip outline">服务 {c.serviceState} · 在线 {c.serviceOnline} / 异常 {c.serviceDegraded}</span>
+          <span className="chip outline">视觉 {c.visionSource}</span>
+          <span className="chip outline">发送 计划/执行/验证 {c.sendPlanned}/{c.sendExecuted}/{c.sendVerified}</span>
           {c.verificationPending > 0 && <span className="chip warn">取证待确认 {c.verificationPending}</span>}
-          {c.needsHuman > 0 && <span className="chip warn">人审 {c.needsHuman}</span>}
         </div>
-        <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+        <div className="cockpit-actions">
           <button className="btn sm" onClick={() => nav('/monitor')}>监控墙 ›</button>
           <button className="btn sm" onClick={() => nav('/approvals')}>待确认 ›</button>
           <button className="btn sm" onClick={() => nav('/settings')}>配置完整度 ›</button>
