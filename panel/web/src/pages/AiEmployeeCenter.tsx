@@ -1065,6 +1065,7 @@ function ServiceActionPlanCard({
   const result = plan.execution_result;
   const record = result?.record ?? plan.audit_record;
   const resultTone = result?.status === 'failed' ? 'danger' : plan.mode === 'executed' ? 'brand' : 'warn';
+  const modeLabel = plan.mode === 'executed' ? '已执行' : plan.mode === 'dry_run_disabled' ? '待确认' : '观察模式';
   const busy = starting || stopping;
   const canStart = isAdmin && !busy && !pidAlive;
   const canStop = isAdmin && !busy && pidAlive;
@@ -1072,7 +1073,7 @@ function ServiceActionPlanCard({
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b>AI 员工启动</b>
-        <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
+        <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{modeLabel}</span>
         {result && <span className={'chip ' + resultTone}>结果 {result.status}</span>}
         <button className="btn primary" disabled={!canStart} onClick={onStartObserveOnly} title={isAdmin ? (pidAlive ? 'AI 员工观察服务已在运行' : '二次确认后启动 AI 员工观察模式，不自动发送微信') : '当前子账号无启动权限，请用管理员账号启动'}>
           {starting ? '启动中…' : '启动 AI 员工'}
