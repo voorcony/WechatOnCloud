@@ -449,6 +449,10 @@ export interface AiServiceActionPlanResponse {
   execution_result: null | {
     status: string;
     pid_alive: boolean;
+    health_state: string | null;
+    health_pid_alive: boolean | null;
+    health_checked: boolean;
+    health_wait_ms: number;
     record: null | {
       recorded: boolean;
       run_id?: number;
