@@ -957,11 +957,14 @@ function ServiceHealthCard({
   const h = resp.mode === 'real' ? resp.health : null;
   const state = h?.service_state ?? 'unknown';
   const tone = state === 'online' ? 'brand' : state === 'degraded' ? 'warn' : state === 'offline' ? 'outline' : 'danger';
+  const refreshText = refreshedAt ? new Date(refreshedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '未刷新';
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <div className="card-h">
         <span className="title">AI 员工服务状态</span>
-        <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>{resp.mode === 'real' ? state : '未配置'}</span>
+        <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>刷新 {refreshText}</span>
+        <button className="btn sm" disabled={refreshing} onClick={onRefresh}>{refreshing ? '刷新中…' : '刷新'}</button>
+        <span className={'chip ' + tone}>{resp.mode === 'real' ? state : '未配置'}</span>
       </div>
       <div className="card-b">
         {h ? (
