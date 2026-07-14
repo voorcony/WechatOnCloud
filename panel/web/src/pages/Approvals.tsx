@@ -96,11 +96,18 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
   const actions = realActions ?? m.actions;
   const filtered = useMemo(() => (filter === 'all' ? actions : actions.filter((a) => a.type === filter)), [actions, filter]);
   const selected = filtered.find((a) => a.key === selKey) ?? filtered[0] ?? actions[0] ?? null;
-  const c = approvalQueue?.summary ?? m.pendingCounts;
+  const countByType = (f: FilterKey) => actions.filter((a) => a.type === f).length;
+  const pendingTotal = actions.length;
+  const c = {
+    reply_jobs_needs_human: countByType('reply_jobs_needs_human'),
+    send_actions_planned: countByType('send_actions_planned'),
+    contact_remark_actions_planned: countByType('contact_remark_actions_planned'),
+    group_operation_actions_planned: countByType('group_operation_actions_planned'),
+    employee_tasks_waiting_approval: countByType('employee_tasks_waiting_approval'),
+  };
   const empty = m.loaded && m.instances.length === 0;
   const ready = m.loaded && m.probed && approvalProbed;
-  const pendingTotal = c.pending_total ?? Object.values(c).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
-  const typeCount = (f: FilterKey) => (f === 'all' ? actions.length : actions.filter((a) => a.type === f).length);
+  const typeCount = (f: FilterKey) => (f === 'all' ? pendingTotal : countByType(f));
 
   return (
     <div className="console-page">

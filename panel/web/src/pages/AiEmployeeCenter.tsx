@@ -164,6 +164,22 @@ const label = (m: Record<string, string>, k: string): string => m[k] ?? k;
 const keyLabel = (k: string): string => label(KEY_LABELS, k);
 const empRoleLabel = (role: string): string => label(ROLE_LABELS, role);
 
+
+function formatRunSummary(summary: string | null | undefined): string {
+  const text = String(summary || '').trim();
+  if (!text) return '—';
+  const fields = Object.fromEntries(text.split(/\s+/).map((part) => {
+    const i = part.indexOf('=');
+    return i > 0 ? [part.slice(0, i), part.slice(i + 1)] : [part, ''];
+  }));
+  if (fields.source === 'service_lifecycle') {
+    const state = fields.service_state || 'unknown';
+    const vision = fields.vision_status || 'unknown';
+    return `服务巡检 · 状态 ${state} · 视觉 ${vision}`;
+  }
+  return text.replace(/_/g, ' ').slice(0, 120);
+}
+
 function timeAgo(iso: string | null): string {
   if (!iso) return '';
   const t = Date.parse(iso);
@@ -989,7 +1005,7 @@ function ServiceHealthCard({
               <div className="card" style={{ marginTop: 12, overflow: 'hidden' }}>
                 <div className="card-h">
                   <span className="title">服务生命周期记录</span>
-                  <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>最近 {runs.runs.run_count} 条 · service_lifecycle</span>
+                  <span className="dim" style={{ marginLeft: 'auto', fontSize: 11 }}>最近 {runs.runs.run_count} 条</span>
                 </div>
                 <table className="t">
                   <thead><tr><th>run</th><th>状态</th><th>摘要</th><th>时间</th></tr></thead>
@@ -998,7 +1014,7 @@ function ServiceHealthCard({
                       <tr key={r.run_id}>
                         <td className="mono">#{r.run_id}</td>
                         <td><span className={'dot ' + (r.status === 'completed' ? 'st-on' : r.status === 'failed' ? 'st-off' : 'st-busy')} /> {r.status}</td>
-                        <td className="dim mono">{r.redacted_summary || '—'}</td>
+                        <td className="dim">{formatRunSummary(r.redacted_summary)}</td>
                         <td className="dim">{r.started_at ? timeAgo(r.started_at) : '—'}</td>
                       </tr>
                     ))}
@@ -1007,7 +1023,7 @@ function ServiceHealthCard({
               </div>
             )}
             {runs?.mode === 'real' && runs.runs.runs.length === 0 && (
-              <div className="safe-note" style={{ marginTop: 12 }}>暂无 service_lifecycle 运行记录。</div>
+              <div className="safe-note" style={{ marginTop: 12 }}>暂无服务生命周期运行记录。</div>
             )}
             {actionPlan && (
               <ServiceActionPlanCard
@@ -1064,7 +1080,6 @@ function ServiceActionPlanCard({
         <button className="btn" disabled={!canStop} onClick={onStopObserveOnly} title={isAdmin ? (pidAlive ? '二次确认后停止 AI 员工观察服务' : 'AI 员工观察服务未运行') : '当前子账号无停止权限，请用管理员账号停止'}>
           {stopping ? '停止中…' : '停止 AI 员工'}
         </button>
-        <button className="btn" disabled title="restart 暂未开放">restart</button>
       </div>
       {!isAdmin && <div className="dim" style={{ marginTop: 8 }}>当前账号是子账号：可以查看运行状态和审批详情；启动/停止 AI 员工需要管理员权限。</div>}
       <div className="dim" style={{ marginTop: 8 }}>
