@@ -785,7 +785,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const ready = loaded && probed;
 
   return (
-    <div>
+    <div className="console-page">
       <div className="page-h">
         <div>
           <h1>AI 员工</h1>

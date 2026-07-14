@@ -233,7 +233,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
   const chart2 = areaPath([16, 26, 30, 40, 46, 58, 70], 600, 180, 18);
 
   return (
-    <div>
+    <div className="console-page">
       <div className="page-h">
         <div>
           <h1>总览</h1>
@@ -427,21 +427,23 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
                 <span className="title">高意向客户</span>
                 <button className="btn sm ghost" style={{ marginLeft: 'auto' }} onClick={() => nav('/customers')}>查看全部 ›</button>
               </div>
-              <table className="t">
-                <thead><tr><th>客户</th><th>阶段</th><th>意向</th><th>风险</th><th>互动</th><th>最近</th></tr></thead>
-                <tbody>
-                  {model.customers.slice(0, 5).map((c) => (
-                    <tr key={c.key}>
-                      <td><div className="row"><span className="avatar accent">{c.code.slice(0, 2)}</span><b>客户 {c.code}</b></div></td>
-                      <td>{stageLabel(c.stage)}</td>
-                      <td className="mono">{c.intent ?? '—'}</td>
-                      <td><span className={'chip ' + (c.risk === 'high' ? 'danger' : c.risk === 'medium' ? 'warn' : 'brand')}>{c.risk === 'high' ? '高' : c.risk === 'medium' ? '中' : '低'}</span></td>
-                      <td className="mono">{c.messages}</td>
-                      <td><span className="dim">{c.ago}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="t-scroll">
+                <table className="t">
+                  <thead><tr><th>客户</th><th>阶段</th><th>意向</th><th>风险</th><th>互动</th><th>最近</th></tr></thead>
+                  <tbody>
+                    {model.customers.slice(0, 5).map((c) => (
+                      <tr key={c.key}>
+                        <td><div className="row"><span className="avatar accent">{c.code.slice(0, 2)}</span><b>客户 {c.code}</b></div></td>
+                        <td>{stageLabel(c.stage)}</td>
+                        <td className="mono">{c.intent ?? '—'}</td>
+                        <td><span className={'chip ' + (c.risk === 'high' ? 'danger' : c.risk === 'medium' ? 'warn' : 'brand')}>{c.risk === 'high' ? '高' : c.risk === 'medium' ? '中' : '低'}</span></td>
+                        <td className="mono">{c.messages}</td>
+                        <td><span className="dim">{c.ago}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

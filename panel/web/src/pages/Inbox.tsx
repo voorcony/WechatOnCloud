@@ -86,7 +86,7 @@ export default function Inbox(_props: { onOpenMenu?: () => void }) {
   );
 
   return (
-    <div>
+    <div className="console-page wide">
       <div className="page-h">
         <div>
           <h1>对话 · 微信工作台</h1>

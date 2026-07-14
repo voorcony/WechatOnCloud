@@ -103,7 +103,7 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
   const typeCount = (f: FilterKey) => (f === 'all' ? actions.length : actions.filter((a) => a.type === f).length);
 
   return (
-    <div>
+    <div className="console-page">
       <div className="page-h">
         <div>
           <h1>待确认队列</h1>
