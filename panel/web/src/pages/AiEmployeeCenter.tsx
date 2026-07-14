@@ -1013,6 +1013,7 @@ function ServiceActionPlanCard({
   isAdmin,
   starting,
   stopping,
+  pidAlive,
   onStartObserveOnly,
   onStopObserveOnly,
 }: {
