@@ -1040,8 +1040,16 @@ function ServiceActionPlanCard({
         <button className="btn" disabled title="restart 暂未开放">restart</button>
       </div>
       <div className="dim" style={{ marginTop: 8 }}>
-        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信；停止观察只停止后台观察 daemon。当前状态：{plan.execution_result ? `${plan.execution_result.status} / health=${plan.execution_result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
+        启动观察会执行 observe-only start：强制 reset-state baseline 当前消息，不传 --execute，不发送微信；停止观察只停止后台观察 daemon。当前状态：{result ? `${result.status} / health=${result.health_state || 'checking'}` : plan.block_reason || '待确认'}。
       </div>
+      {result && (
+        <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
+          <span className="chip outline">pid {result.pid_alive ? 'alive' : 'stopped'}</span>
+          <span className="chip outline">health {result.health_checked ? result.health_state || 'unknown' : 'unchecked'}</span>
+          <span className="chip outline">wait {result.health_wait_ms}ms</span>
+          <span className="chip outline">audit {record?.recorded ? `#${record.run_id ?? 'recorded'}` : 'not recorded'}</span>
+        </div>
+      )}
       <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap' }}>
         {plan.safety_checks.slice(0, 4).map((x) => <span key={x} className="chip outline">{x}</span>)}
       </div>
