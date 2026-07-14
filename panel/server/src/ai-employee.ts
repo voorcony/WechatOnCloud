@@ -170,6 +170,10 @@ export interface AiServiceActionPlanResponse {
   execution_result: null | {
     status: string;
     pid_alive: boolean;
+    health_state: string | null;
+    health_pid_alive: boolean | null;
+    health_checked: boolean;
+    health_wait_ms: number;
     record: null | {
       recorded: boolean;
       run_id?: number;
@@ -182,6 +186,10 @@ export interface AiServiceActionPlanResponse {
 
 const SERVICE_ACTIONS = ['start', 'stop', 'restart'] as const;
 type ServiceAction = (typeof SERVICE_ACTIONS)[number];
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 
 function pickLifecycleRecord(v: any): AiServiceActionPlanResponse['audit_record'] {
@@ -290,14 +298,29 @@ export async function buildServiceActionPlan(action: unknown, options: { execute
   if (shouldExecuteStart) {
     try {
       const rawStart = await runServiceStartObserveCli(cfg);
+      await delay(1500);
+      let healthState: string | null = null;
+      let healthPidAlive: boolean | null = null;
+      try {
+        const rawHealth = await runServiceHealthCli(cfg);
+        const health = pickServiceHealth(rawHealth);
+        healthState = health.service_state;
+        healthPidAlive = health.pid_alive;
+      } catch (e: any) {
+        log?.(e?.message || 'service_start_health_check_failed');
+      }
       executionResult = {
         status: str(rawStart?.status) ?? 'unknown',
         pid_alive: ['running', 'already_running'].includes(str(rawStart?.status) ?? ''),
+        health_state: healthState,
+        health_pid_alive: healthPidAlive,
+        health_checked: healthState !== null,
+        health_wait_ms: 1500,
         record: pickLifecycleRecord(rawStart?.record),
       };
     } catch (e: any) {
       log?.(e?.message || 'service_start_failed');
-      executionResult = { status: 'failed', pid_alive: false, record: null };
+      executionResult = { status: 'failed', pid_alive: false, health_state: null, health_pid_alive: null, health_checked: false, health_wait_ms: 0, record: null };
     }
   }
   return {
