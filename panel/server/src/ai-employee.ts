@@ -221,6 +221,8 @@ function runServiceLifecycleCli(cfg: AiEmployeeConfig, action: 'start' | 'stop')
     ];
     if (action === 'start') {
       args.push('--python', cfg.python, '--reset-state');
+    } else {
+      args.push('--stop-timeout', '3');
     }
     execFile(
       cfg.python,
