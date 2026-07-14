@@ -993,6 +993,7 @@ function ServiceHealthCard({
                 isAdmin={isAdmin}
                 starting={starting}
                 stopping={stopping}
+                pidAlive={h.pid_alive}
                 onStartObserveOnly={onStartObserveOnly}
                 onStopObserveOnly={onStopObserveOnly}
               />
@@ -1025,16 +1026,19 @@ function ServiceActionPlanCard({
   const result = plan.execution_result;
   const record = result?.record ?? plan.audit_record;
   const resultTone = result?.status === 'failed' ? 'danger' : plan.mode === 'executed' ? 'brand' : 'warn';
+  const busy = starting || stopping;
+  const canStart = isAdmin && !busy && !pidAlive;
+  const canStop = isAdmin && !busy && pidAlive;
   return (
     <div className="safe-note" style={{ marginTop: 12 }}>
       <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <b>服务控制</b>
         <span className={plan.mode === 'executed' ? 'chip brand' : 'chip warn'}>{plan.mode}</span>
         {result && <span className={'chip ' + resultTone}>结果 {result.status}</span>}
-        <button className="btn primary" disabled={!isAdmin || starting || stopping} onClick={onStartObserveOnly} title={isAdmin ? '二次确认后启动 observe-only，不发送微信' : '仅管理员可启动'}>
+        <button className="btn primary" disabled={!canStart} onClick={onStartObserveOnly} title={isAdmin ? (pidAlive ? 'observe-only daemon 已在运行' : '二次确认后启动 observe-only，不发送微信') : '仅管理员可启动'}>
           {starting ? '启动中…' : '启动观察'}
         </button>
-        <button className="btn" disabled={!isAdmin || starting || stopping} onClick={onStopObserveOnly} title={isAdmin ? '二次确认后停止 observe-only daemon' : '仅管理员可停止'}>
+        <button className="btn" disabled={!canStop} onClick={onStopObserveOnly} title={isAdmin ? (pidAlive ? '二次确认后停止 observe-only daemon' : 'observe-only daemon 未运行') : '仅管理员可停止'}>
           {stopping ? '停止中…' : '停止观察'}
         </button>
         <button className="btn" disabled title="restart 暂未开放">restart</button>
