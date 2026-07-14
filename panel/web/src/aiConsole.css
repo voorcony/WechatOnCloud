@@ -1119,3 +1119,193 @@
 @media (max-width: 900px) {
   .ai-console .approval-body-grid { grid-template-columns: 1fr; }
 }
+
+/* ====================================================================
+ *  /admin 实例·账号管理 —— Console 皮肤
+ *  Admin.tsx 沿用 WOC 旧组件类（.inst-card/.btn/.tag/.modal…），此处在
+ *  .ai-console 作用域内把它们统一到 Apple-like Console 语言：白卡 + 细边 +
+ *  轻阴影 + 32px 按钮，并抹掉牛奶布艺的 sheen/crease/trough 残留。
+ *  只覆盖视觉，不动结构；登录页与全局 confirm/toast 挂在 .ai-console 外，不受影响。
+ * ================================================================== */
+
+.ai-console .admin-page { max-width: 1280px; }
+.ai-console .admin-body { min-width: 0; }
+
+/* --- 按钮：统一高度 / 去 sheen 浮起 --- */
+.ai-console .btn { position: relative; font-size: 13px; font-weight: 500; box-shadow: none; overflow: visible; }
+.ai-console .btn::before { content: none; }
+.ai-console .btn:active:not(:disabled) { transform: none; box-shadow: none; }
+.ai-console .btn:disabled { opacity: .5; cursor: not-allowed; }
+.ai-console .btn-primary { background: var(--brand); color: #fff; border-color: transparent; }
+.ai-console .btn-primary:hover, .ai-console .btn-primary:active:not(:disabled) { background: var(--brand-2); }
+.ai-console .btn-danger { background: var(--danger); color: #fff; border-color: transparent; }
+.ai-console .btn-danger:hover, .ai-console .btn-danger:active:not(:disabled) { background: var(--danger); filter: brightness(.94); }
+.ai-console .btn-text {
+  background: none; border: 0; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--brand-ink);
+  padding: 5px 8px; border-radius: 8px; transition: .12s;
+}
+.ai-console .btn-text:hover, .ai-console .btn-text:active { background: var(--bg-hover); }
+.ai-console .btn-text:disabled { opacity: .5; cursor: not-allowed; }
+.ai-console .btn-text.danger { color: var(--danger); }
+.ai-console .btn-text.danger:hover, .ai-console .btn-text.danger:active { background: var(--danger-soft); }
+/* 卡片主 CTA / 设置区实心按钮 / 数据卷顶栏按钮：与 .btn 同一尺寸体系 */
+.ai-console .inst-act-wide { height: 34px; font-size: 13.5px; }
+.ai-console .settings-actions .s-btn { height: 32px; padding: 0 14px; }
+.ai-console .vol-topbar .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* --- 输入 / 表单 --- */
+.ai-console .input {
+  height: 36px; padding: 0 10px; font-size: 13.5px;
+  background: var(--bg-elev); border: 1px solid var(--line); box-shadow: none;
+  border-radius: var(--radius-sm);
+}
+.ai-console .input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.ai-console .pw-field .input { padding-right: 40px; }
+.ai-console .pw-toggle { width: 30px; height: 30px; right: 4px; border-radius: 8px; }
+.ai-console .pw-toggle:active { background: var(--bg-hover); }
+.ai-console .field-label { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 12px 2px 6px; }
+.ai-console .error {
+  background: var(--danger-soft); color: var(--danger-ink);
+  padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;
+}
+
+/* --- 状态徽标（tag）→ Console 软色 pill --- */
+.ai-console .tag {
+  font-size: 11px; font-weight: 600; padding: 2px 9px; margin-left: 0;
+  border-radius: 999px; background: var(--bg-soft); color: var(--text-2);
+  border: 1px solid var(--line);
+}
+.ai-console .tag-on   { background: var(--brand-soft);  color: var(--brand-ink);  border-color: transparent; }
+.ai-console .tag-busy { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+.ai-console .tag-warn { background: var(--warn-soft);   color: var(--warn-ink);   border-color: transparent; }
+.ai-console .tag-off  { background: var(--danger-soft); color: var(--danger-ink); border-color: transparent; }
+.ai-console .tag-muted { background: var(--bg-soft); color: var(--text-3); border-color: var(--line); }
+
+/* --- chip 多选 --- */
+.ai-console .chip { font-weight: 550; }
+.ai-console .chip-static { background: var(--brand-soft); color: var(--brand-ink); border-color: transparent; }
+.ai-console .chip-toggle { background: var(--bg-elev); color: var(--text-2); border: 1px solid var(--line); box-shadow: none; cursor: pointer; }
+.ai-console .chip-toggle:hover { background: var(--bg-hover); }
+.ai-console .chip-toggle:active { transform: none; }
+.ai-console .chip-toggle.on { background: var(--brand); color: #fff; border-color: transparent; box-shadow: none; }
+
+/* --- 三 Tab 分段选择器 → Apple 分段控件（凹槽 + 白色浮起胶囊） --- */
+.ai-console .seg-tabs {
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: 10px; padding: 3px; gap: 2px; margin: 0 0 16px;
+}
+.ai-console .seg-tab { font-size: 13px; font-weight: 500; padding: 6px 18px; border-radius: 8px; color: var(--text-2); }
+.ai-console .seg-tab:hover { color: var(--text); }
+.ai-console .seg-tab.active { background: var(--bg-elev); color: var(--text); font-weight: 600; box-shadow: var(--shadow-1); }
+.ai-console .seg-dot { top: 6px; right: 8px; width: 6px; height: 6px; }
+
+/* --- 分区标题行 --- */
+.ai-console .section-row { margin: 18px 2px 10px; gap: 12px; }
+.ai-console .section-row:first-child { margin-top: 2px; }
+.ai-console .section-title { font-size: 15px; font-weight: 700; letter-spacing: .1px; }
+
+/* --- 实例 / 子账号卡片 --- */
+.ai-console .inst-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ai-console .inst-card {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-1);
+  padding: 16px; transition: box-shadow .15s;
+}
+.ai-console .inst-card::before { content: none; }
+.ai-console .inst-card:hover { box-shadow: var(--shadow-2); }
+.ai-console .inst-name { font-size: 14.5px; font-weight: 650; }
+.ai-console .inst-sub { font-size: 12.5px; color: var(--text-2); }
+.ai-console .inst-actions { margin-top: 12px; }
+.ai-console .inst-admin-links { box-shadow: none; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 8px; }
+.ai-console .inst-admin-links .btn-text { font-size: 13px; padding: 5px 8px; }
+
+/* 「管理」折叠菜单：白卡悬浮层 */
+.ai-console .inst-menu-toggle {
+  height: 32px; font-size: 13px; font-weight: 550;
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); color: var(--text-2); box-shadow: none;
+}
+.ai-console .inst-menu-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.ai-console .inst-menu {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow-3);
+}
+.ai-console .inst-menu-label { color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
+.ai-console .inst-menu-danger { border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* 升级提示条 / 版本提示 */
+.ai-console .upgrade-banner {
+  background: var(--warn-soft); color: var(--warn-ink);
+  border-radius: var(--radius); font-size: 13px;
+}
+.ai-console .ver-hint { background: var(--warn-soft); color: var(--warn-ink); border-radius: var(--radius-sm); }
+.ai-console .ver-hint code { background: rgba(0,0,0,.07); }
+:root[data-theme='dark'] .ai-console .ver-hint code { background: rgba(255,255,255,.1); }
+
+/* 下载/升级进度条 */
+.ai-console .wx-progress { height: 6px; margin-top: 12px; background: var(--bg-soft); box-shadow: none; }
+.ai-console .wx-progress-bar { background: linear-gradient(90deg, var(--brand-2), var(--brand)); box-shadow: none; }
+
+/* --- 弹窗：白卡 + 细边 + 大阴影 --- */
+.ai-console .modal-mask { background: rgba(15,17,21,.45); }
+.ai-console .card.modal {
+  background: var(--bg-elev); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-3);
+  padding: 20px; width: 100%; max-width: 420px;
+}
+.ai-console .card.modal::before { content: none; }
+.ai-console .modal h2 { font-size: 16px; font-weight: 700; }
+.ai-console .card.modal.vol-modal { width: 640px; max-width: min(92vw, 640px); }
+
+/* 安全 / 代理弹窗的状态块 */
+.ai-console .security-status { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: none; }
+
+/* 删除实例的「彻底清除」勾选 */
+.ai-console .purge-opt { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: none; font-size: 13px; }
+.ai-console .purge-opt.on { border-color: var(--danger); box-shadow: none; }
+.ai-console .purge-check { background: var(--bg-elev); border: 1px solid var(--line-strong); box-shadow: none; }
+.ai-console .purge-opt.on .purge-check { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+/* 新建实例·应用类型 / 图标选择 */
+.ai-console .app-pick { background: var(--bg-elev); border: 1px solid var(--line); box-shadow: none; border-radius: var(--radius-sm); }
+.ai-console .app-pick:hover:not(:disabled):not(.sel) { background: var(--bg-hover); }
+.ai-console .app-pick.sel { background: var(--brand-soft); border-color: var(--brand); box-shadow: none; }
+.ai-console .app-pick.sel .app-pick-name { color: var(--brand-ink); }
+.ai-console .icon-pick { background: var(--bg-elev); border: 1px solid var(--line); box-shadow: none; border-radius: var(--radius-sm); }
+.ai-console .icon-pick:active { transform: none; }
+.ai-console .icon-pick.sel { background: var(--brand-soft); border-color: var(--brand); box-shadow: none; }
+.ai-console .icon-pick.sel span { color: var(--brand-ink); }
+
+/* --- 数据卷文件浏览器 --- */
+.ai-console .vol-warn { background: var(--warn-soft); color: var(--warn-ink); border-radius: var(--radius-sm); }
+.ai-console .vol-crumb { color: var(--brand-ink); }
+.ai-console .vol-crumb:active { background: var(--brand-soft); }
+.ai-console .vol-crumb:disabled { color: var(--text-3); }
+.ai-console .vol-sep { color: var(--text-3); }
+.ai-console .vol-tools .btn-text {
+  background: var(--bg-elev); border: 1px solid var(--line); box-shadow: none;
+  font-size: 13px; padding: 5px 12px; border-radius: var(--radius-sm);
+}
+.ai-console .vol-tools .btn-text:hover { background: var(--bg-hover); }
+.ai-console .vol-tools .btn-text:active { transform: none; }
+.ai-console .vol-busy { color: var(--brand-ink); }
+.ai-console .vol-list { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: none; }
+.ai-console .vol-row:hover { background: var(--bg-elev); box-shadow: var(--shadow-1); }
+.ai-console .vol-main { font-size: 13px; }
+.ai-console .vol-ic { color: var(--text-3); }
+.ai-console .vol-ic.dir { color: var(--brand); }
+.ai-console .vol-meta { color: var(--text-3); }
+.ai-console .vol-act { background: var(--bg-soft); color: var(--text-3); box-shadow: none; border: 1px solid var(--line); }
+.ai-console .vol-row:hover .vol-act { background: var(--bg-elev); color: var(--text-2); }
+.ai-console .vol-act:active { transform: none; }
+.ai-console .vol-act.danger:hover { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+
+/* --- 空状态 / 扁平设置区块 --- */
+.ai-console .empty-blob { width: 72px; height: 72px; margin: 0 auto 4px; font-size: 34px; background: var(--bg-soft); box-shadow: none; border-radius: 22px; }
+.ai-console .empty-blob::before { content: none; }
+.ai-console .empty-sub { margin-top: 0; }
+.ai-console .settings-block { padding: 0; }
+.ai-console .settings-block .s-desc, .ai-console .s-foot, .ai-console .s-line { color: var(--text-2); }
+.ai-console .s-line b, .ai-console .s-app { color: var(--text); }
+.ai-console .security-row span:first-child { color: var(--text-2); }

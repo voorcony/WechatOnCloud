@@ -20,12 +20,6 @@ function fmtDate(ms: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const MenuIcon = (
-  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M4 6h16M4 12h16M4 18h16" />
-  </svg>
-);
-
 // 折叠菜单的展开箭头
 const CaretIcon = (
   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -100,11 +94,11 @@ function DiagnosticsSection() {
     a.remove();
   };
   return (
-    <>
-      <div className="section-row" style={{ marginTop: 22 }}>
-        <span className="section-title">诊断与日志</span>
+    <div className="card" style={{ marginTop: 18 }}>
+      <div className="card-h">
+        <span className="title">诊断与日志</span>
       </div>
-      <div className="settings-block">
+      <div className="card-b settings-block">
         <p className="s-desc">打包系统/Docker 信息 + 面板全局日志 + 各实例容器状态与日志 + 容器清单，用于排查部署、创建卡死、黑屏不可用、升级失败等问题。</p>
         <div className="s-field">
           <span className="field-label">时间范围</span>
@@ -126,7 +120,7 @@ function DiagnosticsSection() {
         </div>
         <p className="s-foot">导出当前选定范围内的日志（.tar.gz）。超过一年的日志自动清理；诊断包不含密码 / 密钥等敏感信息。</p>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -149,11 +143,11 @@ function AboutSection({ isAdmin }: { isAdmin: boolean }) {
   }, [isAdmin]);
 
   return (
-    <>
-      <div className="section-row" style={{ marginTop: 22 }}>
-        <span className="section-title">关于</span>
+    <div className="card" style={{ marginTop: 18 }}>
+      <div className="card-h">
+        <span className="title">关于</span>
       </div>
-      <div className="settings-block">
+      <div className="card-b settings-block">
         <div className="s-title-row">
           <span className="s-app">{info?.product ?? 'AI WeChat Console'}</span>
           <span className="tag">Voorcony Build</span>
@@ -178,11 +172,12 @@ function AboutSection({ isAdmin }: { isAdmin: boolean }) {
           </p>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
 export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: () => void; onChangePassword: () => void }) {
+  void onOpenMenu; // 模板外壳自带侧栏 / 菜单，本页不再渲染 header。
   const nav = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -468,15 +463,34 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
   };
 
   return (
-    <div className="ws-page">
-      <header className="ws-head">
-        <button className="ws-menu" onClick={onOpenMenu} aria-label="菜单">
-          {MenuIcon}
-        </button>
-        <span className="ws-title">{isAdmin ? '管理' : '设置'}</span>
-      </header>
+    <div className="admin-page">
+      {/* Console 统一页头：标题 + 说明 + 当前 Tab 的主操作（原「+ 新建」btn-text 收拢到这里） */}
+      <div className="page-h">
+        <div>
+          <h1>{isAdmin ? '实例·账号管理' : '设置'}</h1>
+          <p>
+            {isAdmin
+              ? '管理微信实例的生命周期与代理安全、子账号授权，以及系统维护与诊断。'
+              : '管理你的登录账号与密码，并查看当前构建信息。'}
+          </p>
+        </div>
+        {isAdmin && (
+          <div className="act">
+            {tab === 'inst' && (
+              <button className="btn brand" onClick={() => setCreatingInst(true)}>
+                ＋ 新建实例
+              </button>
+            )}
+            {tab === 'users' && (
+              <button className="btn brand" onClick={() => setCreatingUser(true)}>
+                ＋ 新建子账号
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
-      <main className="content">
+      <div className="admin-body">
         {err && <div className="error">{err}</div>}
 
         {/* 三 Tab 信息架构：实例（日常） / 用户（账号权限） / 系统（维护+诊断+关于）。
@@ -508,9 +522,7 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
           <>
             <div className="section-row">
               <span className="section-title">实例</span>
-              <button className="btn-text" onClick={() => setCreatingInst(true)}>
-                + 新建实例
-              </button>
+              <span className="muted small">{instances.length > 0 ? `共 ${instances.length} 个实例` : ''}</span>
             </div>
             {!!(upg?.outdatedCount || upg?.remoteNewer) && instances.length > 0 && (
               <div className="upgrade-banner">
@@ -574,9 +586,7 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
           <>
             <div className="section-row">
               <span className="section-title">子账号</span>
-              <button className="btn-text" onClick={() => setCreatingUser(true)}>
-                + 新建子账号
-              </button>
+              <span className="muted small">{subs.length > 0 ? `共 ${subs.length} 个子账号` : ''}</span>
             </div>
             {subs.length === 0 ? (
               <EmptyState
@@ -718,7 +728,7 @@ export default function Admin({ onOpenMenu, onChangePassword }: { onOpenMenu: ()
 
         {isAdmin && tab === 'system' && <DiagnosticsSection />}
         {(!isAdmin || tab === 'system') && <AboutSection isAdmin={isAdmin} />}
-      </main>
+      </div>
 
       {creatingUser && (
         <CreateUser
