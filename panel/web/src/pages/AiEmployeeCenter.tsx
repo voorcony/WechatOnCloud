@@ -732,23 +732,36 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
   const [serviceActionPlan, setServiceActionPlan] = useState<AiServiceActionPlanResponse | null>(null);
   const [startingService, setStartingService] = useState(false);
   const [stoppingService, setStoppingService] = useState(false);
-  const refreshServiceState = () => {
-    api
-      .aiEmployeeServiceHealth()
-      .then((r) => setServiceHealth(r))
-      .catch(() => setServiceHealth(null));
-    api
-      .aiEmployeeServiceRuns()
-      .then((r) => setServiceRuns(r))
-      .catch(() => setServiceRuns(null));
-    api
-      .aiEmployeeServiceActionPlan('start')
-      .then((r) => setServiceActionPlan(r))
-      .catch(() => setServiceActionPlan(null));
+  const [serviceRefreshing, setServiceRefreshing] = useState(false);
+  const [serviceRefreshedAt, setServiceRefreshedAt] = useState<number | null>(null);
+  const refreshServiceState = async () => {
+    setServiceRefreshing(true);
+    try {
+      const [health, runs, plan] = await Promise.all([
+        api.aiEmployeeServiceHealth().catch(() => null),
+        api.aiEmployeeServiceRuns().catch(() => null),
+        api.aiEmployeeServiceActionPlan('start').catch(() => null),
+      ]);
+      setServiceHealth(health);
+      setServiceRuns(runs);
+      setServiceActionPlan(plan);
+      setServiceRefreshedAt(Date.now());
+    } finally {
+      setServiceRefreshing(false);
+    }
   };
   useEffect(() => {
-    refreshServiceState();
+    void refreshServiceState();
   }, []);
+  useEffect(() => {
+    const pidAlive = serviceHealth?.mode === 'real' && serviceHealth.health.pid_alive;
+    if (!pidAlive && !startingService && !stoppingService) return undefined;
+    const timer = window.setInterval(() => {
+      void refreshServiceState();
+    }, 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceHealth?.mode, serviceHealth?.mode === 'real' ? serviceHealth.health.pid_alive : false, startingService, stoppingService]);
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
   const wocById = useMemo(() => new Map(instances.map((i) => [i.id, i])), [instances]);
@@ -822,13 +835,16 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
         isAdmin={isAdmin}
         starting={startingService}
         stopping={stoppingService}
+        refreshing={serviceRefreshing}
+        refreshedAt={serviceRefreshedAt}
+        onRefresh={() => void refreshServiceState()}
         onStartObserveOnly={async () => {
           if (!window.confirm('启动 observe-only AI 员工？\n\n只观察/记录，不发送微信；会 baseline 当前消息，避免处理历史消息。')) return;
           setStartingService(true);
           try {
             const r = await api.aiEmployeeServiceActionPlan('start', { execute: true, confirm: true });
             setServiceActionPlan(r);
-            refreshServiceState();
+            void refreshServiceState();
           } finally {
             setStartingService(false);
           }
@@ -839,7 +855,7 @@ export default function AiEmployeeCenter({ onOpenMenu }: { onOpenMenu: () => voi
           try {
             const r = await api.aiEmployeeServiceActionPlan('stop', { execute: true, confirm: true });
             setServiceActionPlan(r);
-            refreshServiceState();
+            void refreshServiceState();
           } finally {
             setStoppingService(false);
           }
@@ -922,6 +938,9 @@ function ServiceHealthCard({
   isAdmin,
   starting,
   stopping,
+  refreshing,
+  refreshedAt,
+  onRefresh,
   onStartObserveOnly,
   onStopObserveOnly,
 }: {
