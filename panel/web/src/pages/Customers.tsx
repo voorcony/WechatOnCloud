@@ -66,7 +66,7 @@ export default function Customers(_props: { onOpenMenu?: () => void }) {
   const filterCount = (f: FilterKey) => m.customers.filter((c) => matchFilter(c, f)).length;
 
   return (
-    <div>
+    <div className="console-page wide customer-page">
       <div className="page-h">
         <div>
           <h1>客户</h1>
@@ -145,9 +145,14 @@ export default function Customers(_props: { onOpenMenu?: () => void }) {
           <div className="empty-sub">启动 OCR 历史补全并运行记忆 / 画像抽取后，客户会在此按阶段、意向、风险沉淀。</div>
         </div>
       ) : (
-        <>
-          <div className="card" style={{ marginTop: 16, overflow: 'hidden' }}>
-            <table className="t">
+        <div className="customer-workspace">
+          <div className="card customer-list-card">
+            <div className="card-h">
+              <span className="title">客户列表</span>
+              <span className="dim" style={{ marginLeft: 'auto', fontSize: 12 }}>{filtered.length} / {m.customers.length}</span>
+            </div>
+            <div className="t-scroll customer-table-scroll">
+              <table className="t customer-table">
               <thead>
                 <tr>
                   <th>客户</th>
@@ -178,7 +183,7 @@ export default function Customers(_props: { onOpenMenu?: () => void }) {
                         <div className="row">
                           <div className={'avatar ' + (c.risk === 'high' ? 'warn' : c.highIntent ? 'brand' : 'accent')}>{c.code.slice(0, 2)}</div>
                           <div>
-                            <div style={{ fontWeight: 600 }}>
+                            <div className="customer-name">
                               客户 {c.code}
                               {c.highIntent && (
                                 <span className="chip brand" style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px' }}>
@@ -222,11 +227,20 @@ export default function Customers(_props: { onOpenMenu?: () => void }) {
                   ))
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
 
-          {selected && <CustomerDetail c={selected} onClose={() => setSelKey(null)} onTakeover={(id) => nav(`/i/${id}`)} />}
-        </>
+          {selected ? (
+            <CustomerDetail c={selected} onClose={() => setSelKey(null)} onTakeover={(id) => nav(`/i/${id}`)} />
+          ) : (
+            <div className="card customer-detail-placeholder">
+              <div className="empty-blob">👤</div>
+              <div className="empty-title">选择一个客户查看完整画像</div>
+              <div className="empty-sub">阶段、风险、主理员工、互动统计与 AI 跟进建议会在这里展开，避免把所有内容挤进小表格。</div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -234,7 +248,7 @@ export default function Customers(_props: { onOpenMenu?: () => void }) {
 
 function CustomerDetail({ c, onClose, onTakeover }: { c: CrmCustomer; onClose: () => void; onTakeover: (id: string) => void }) {
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card customer-detail-card">
       <div className="card-h">
         <div className={'avatar ' + (c.risk === 'high' ? 'warn' : c.highIntent ? 'brand' : 'accent')}>{c.code.slice(0, 2)}</div>
         <span className="title">客户 {c.code}</span>

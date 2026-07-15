@@ -17,7 +17,14 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-const routerBase = window.location.pathname.startsWith('/wechat/woc') ? '/wechat/woc' : undefined;
+// 同一 SPA 支持两个部署入口：
+//  - https://aipowerlogin.com/wechat/woc/...        → basename /wechat/woc
+//  - https://wechat.aipowerlogin.com/dashboard/...  → basename /dashboard
+const routerBase = window.location.pathname.startsWith('/wechat/woc')
+  ? '/wechat/woc'
+  : window.location.pathname.startsWith('/dashboard')
+    ? '/dashboard'
+    : undefined;
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

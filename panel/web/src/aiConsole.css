@@ -24,6 +24,7 @@
   --brand-ink:    #0d6e3a;
 
   --accent:       #5b8def;
+  --accent-2:     #2a4ed8;
   --accent-soft:  #e9efff;
   --accent-ink:   #1a4cb8;
 
@@ -135,6 +136,12 @@
 .ai-console .dot.st-warn  { background: var(--warn);   box-shadow: 0 0 0 3px var(--warn-soft); }
 .ai-console .dot.st-off   { background: var(--text-3); box-shadow: 0 0 0 3px var(--bg-soft); }
 .ai-console .dot.st-err   { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+/* 兼容用户 tokens.css 的 .dot.on|busy|warn|off|err 别名；新组件请优先用 DESIGN_SPEC 的 st-* */
+.ai-console .dot.on    { background: var(--brand);  box-shadow: 0 0 0 3px var(--brand-soft); }
+.ai-console .dot.busy  { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ai-console .dot.warn  { background: var(--warn);   box-shadow: 0 0 0 3px var(--warn-soft); }
+.ai-console .dot.off   { background: var(--text-3); box-shadow: 0 0 0 3px var(--bg-soft); }
+.ai-console .dot.err   { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 
 .ai-console .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -303,7 +310,7 @@
   font-weight: 600; font-size: 13px; flex-shrink: 0;
 }
 .ai-console .avatar.brand  { background: linear-gradient(135deg, var(--brand), #0e8a4a); }
-.ai-console .avatar.accent { background: linear-gradient(135deg, var(--accent), #2a4ed8); }
+.ai-console .avatar.accent { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 .ai-console .avatar.warn   { background: linear-gradient(135deg, var(--warn), #b16a05); }
 .ai-console .avatar.violet { background: linear-gradient(135deg, #8b5cf6, #5b21b6); }
 .ai-console .avatar.lg { width: 40px; height: 40px; font-size: 15px; }
@@ -573,7 +580,16 @@
 .ai-console .grid-2 { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; margin-top: 16px; }
 .ai-console .grid-3 { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0,1fr)); margin-top: 16px; }
 
+/* Dashboard 工具类：总览 TSX 的内联视觉样式统一迁到这里 */
+.ai-console .ml-auto { margin-left: auto; }
+.ai-console .mt { margin-top: 16px; }
+.ai-console .card.clip { overflow: hidden; }
+.ai-console .card-h .legend { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.ai-console .list-empty { padding: 8px; font-size: 13px; color: var(--text-3); }
+
 .ai-console .bar-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.ai-console button.bar-row { width: 100%; background: transparent; border: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.ai-console .bar-row .txt { font-size: 13px; }
 .ai-console .bar-row .lbl { width: 96px; color: var(--text-2); font-size: 12px; }
 .ai-console .bar-row .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
 .ai-console .bar-row .bar .fill { height: 100%; background: linear-gradient(90deg, var(--brand), var(--accent)); }
@@ -761,6 +777,19 @@
 /* detail-card：通用「选中项详情」卡（待确认右栏 / 客户详情等共用同一骨架） */
 .ai-console .apr-detail-card,
 .ai-console .detail-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-1); min-width: 0; }
+
+.ai-console .customer-workspace { display: grid; grid-template-columns: minmax(620px, 1.4fr) minmax(360px, .8fr); gap: 16px; align-items: start; margin-top: 16px; }
+.ai-console .customer-list-card,
+.ai-console .customer-detail-card,
+.ai-console .customer-detail-placeholder { min-width: 0; }
+.ai-console .customer-table-scroll { max-height: 68vh; overflow: auto; }
+.ai-console .customer-table th,
+.ai-console .customer-table td { vertical-align: top; }
+.ai-console .customer-table .row { align-items: flex-start; min-width: 0; }
+.ai-console .customer-name { font-weight: 650; max-width: 240px; overflow-wrap: anywhere; line-height: 1.35; }
+.ai-console .customer-detail-card { position: sticky; top: 0; }
+.ai-console .customer-detail-placeholder { min-height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; color: var(--text-2); }
+@media (max-width: 1180px) { .ai-console .customer-workspace { grid-template-columns: 1fr; } .ai-console .customer-detail-card { position: static; } }
 .ai-console .apr-redacted { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg-soft); border: 1px dashed var(--line-strong); font-size: 12.5px; color: var(--text-2); }
 .ai-console .apr-reason-head { font-size: 12px; color: var(--text-3); margin-bottom: 4px; }
 .ai-console .apr-reason-body { font-size: 13px; color: var(--text-2); margin: 0; }
@@ -851,7 +880,10 @@
 
 /* ====== 响应式 ====== */
 @media (max-width: 1100px) {
-  .ai-console .grid-2, .ai-console .grid-3, .ai-console .agent-grid, .ai-console .tool-grid, .ai-console .prompt-grid, .ai-console .apr-grid { grid-template-columns: 1fr; }
+  .ai-console .grid-2, .ai-console .agent-grid, .ai-console .tool-grid, .ai-console .prompt-grid, .ai-console .apr-grid { grid-template-columns: 1fr; }
+  /* grid-3 窄屏先降 2 列（超窄见 768px 断点）；KPI 卡固定 2×2，不允许 auto-fit 塌成 1 列 */
+  .ai-console .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ai-console .kpi-grid, .ai-console .kpi-grid.k6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* 窄屏：三栏纵向堆叠而非隐藏，实例列表限高内滚，VNC 工作区保底高度 */
   .ai-console .inbox { grid-template-columns: 1fr; height: auto; }
   .ai-console .inbox-col + .inbox-col { border-left: 0; border-top: 1px solid var(--line); }
@@ -864,6 +896,7 @@
   .ai-console .member-row .col-inst, .ai-console .member-row .col-role { display: none; }
 }
 @media (max-width: 768px) {
+  .ai-console .grid-3 { grid-template-columns: 1fr; }
   .ai-console .app { grid-template-columns: 1fr; grid-template-areas: "top" "main"; }
   .ai-console .sb { position: fixed; left: 0; top: 0; height: 100vh; width: 248px; transform: translateX(-100%); transition: .2s; z-index: 30; }
   .ai-console .app.drawer .sb { transform: translateX(0); box-shadow: var(--shadow-3); }
