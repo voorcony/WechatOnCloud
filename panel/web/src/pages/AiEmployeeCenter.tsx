@@ -1492,7 +1492,7 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
       <div className="card">
         <div className="card-h">
           <span className="title">人格配置与自动回复策略</span>
-          <div className="row" style={{ marginLeft: 'auto', gap: 6 }}>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             <span className="chip">模板草稿 · 不回显明文</span>
             <button className="btn sm" disabled={busy !== ''} onClick={applyTemplate}>
               {busy === 'template' ? '应用中…' : '应用游戏代练客服模板'}
@@ -1559,7 +1559,7 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
             <div className="prompt-pane">
               <div className="ph">
                 <span className="title">自动回复策略</span>
-                <span className={'chip ' + (ar.mode === 'disabled' ? 'outline' : autoSend ? 'warn' : 'brand')} style={{ marginLeft: 'auto' }}>
+                <span className={'chip ' + (ar.mode === 'disabled' ? 'outline' : autoSend ? 'warn' : 'brand')}>
                   {AUTO_MODE_LABELS[ar.mode]}
                 </span>
               </div>
