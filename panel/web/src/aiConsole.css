@@ -229,8 +229,6 @@
 .ai-console .prompt-pane,
 .ai-console .tool-card,
 .ai-console .set-grid .card { min-width: 320px; }
-.ai-console .card,
-.ai-console .card * { writing-mode: horizontal-tb; }
 .ai-console .card .card-h {
   padding: 14px 16px; border-bottom: 1px solid var(--line);
   display: flex; align-items: center; gap: 8px;
@@ -798,8 +796,6 @@
 .ai-console .customer-detail-card,
 .ai-console .customer-detail-placeholder { min-width: 0; }
 .ai-console .customer-table-scroll { max-height: 68vh; overflow: auto; }
-.ai-console .customer-table th,
-.ai-console .customer-table td { vertical-align: top; }
 .ai-console .customer-table .row { align-items: flex-start; min-width: 0; }
 .ai-console .customer-name { font-weight: 650; max-width: 240px; overflow-wrap: anywhere; line-height: 1.35; }
 .ai-console .customer-detail-card { position: sticky; top: 0; }

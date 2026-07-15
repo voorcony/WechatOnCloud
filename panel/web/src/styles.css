@@ -157,8 +157,11 @@ button {
   border-radius: var(--r-card);
   padding: 24px;
   width: 100%;
-  max-width: 360px;
+  max-width: none;
+  min-width: 0;
 }
+.card.wide { min-width: 320px; }
+.card.narrow { min-width: 280px; }
 
 /* 登录 */
 .login-screen {
@@ -498,7 +501,6 @@ button {
   border-radius: 999px;
   padding: 2px 9px;
   margin-left: 8px;
-  vertical-align: middle;
   font-weight: 600;
   white-space: nowrap; /* 徽标整体不换行，杜绝「可升\n级」竖排 */
 }
@@ -977,7 +979,7 @@ button {
 /* ---------- 实例网格 ---------- */
 .inst-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 14px;
   margin-bottom: 22px;
   /* 各卡片按自身内容高度，避免某张展开「管理」菜单时同行其它卡片被拉等高（显得也展开了） */
@@ -2511,7 +2513,7 @@ button {
   .monitor-grid,
   .monitor-grid.cols-2,
   .monitor-grid.cols-3,
-  .monitor-grid.cols-4 { grid-template-columns: 1fr; }
+  .monitor-grid.cols-4 { grid-template-columns: minmax(0, 1fr); }
 }
 
 .shell-backdrop {
@@ -2894,7 +2896,7 @@ button {
 /* 壁纸缩略图网格 */
 .bg-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 8px;
 }
 .bg-card {
@@ -2998,7 +3000,7 @@ button {
 /* 字体卡片网格 */
 .font-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 8px;
 }
 .font-card {
@@ -3415,7 +3417,6 @@ button {
 .ai-table td {
   text-align: left;
   padding: 11px 14px;
-  vertical-align: middle;
 }
 .ai-table thead th {
   font-size: 12px;
@@ -3601,7 +3602,7 @@ button {
 }
 .ai-action-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 12px;
   margin: 14px 0 16px;
 }
@@ -3656,7 +3657,6 @@ button {
   color: #fff;
   font-size: 10px;
   font-weight: 700;
-  vertical-align: middle;
 }
 .ai-filter .ai-tab-badge,
 .ai-tab.on .ai-tab-badge {
@@ -3738,13 +3738,13 @@ button {
 /* 工作台：名册（左） + 详情（右） */
 .ai-ws {
   display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
   align-items: start;
 }
 @media (max-width: 900px) {
   .ai-ws {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .ai-ws-list {
@@ -3985,8 +3985,8 @@ button {
 /* ===== PR5：可编辑人格 + 自动回复策略 ===== */
 .ai-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 .ai-form-field {
   display: flex;
@@ -4092,8 +4092,8 @@ button {
 /* 模式 radio 卡 */
 .ai-radio-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 .ai-radio {
   display: flex;
@@ -4246,7 +4246,7 @@ button {
 .ai-wxgrid,
 .ai-custgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
   align-items: start;
 }
@@ -4403,7 +4403,6 @@ button {
   padding: 1px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.22);
-  vertical-align: middle;
 }
 .con-hero-side {
   display: flex;
@@ -4523,17 +4522,11 @@ button {
   padding: 32px 0;
 }
 
-/* —— 主区三列 —— */
+/* —— 主区自适应卡片网格 —— */
 .con-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
-}
-@media (min-width: 720px) {
-  .con-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (min-width: 1080px) {
-  .con-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 .con-col {
   display: flex;
@@ -4541,6 +4534,26 @@ button {
   gap: 14px;
   min-width: 0;
 }
+.con-panel,
+.ai-sec,
+.ai-persona,
+.ai-tool-card,
+.kb-list,
+.kb-stat,
+.crm-list,
+.crm-detail,
+.crm-rail,
+.apr-queue-card,
+.apr-detail-card,
+.set-grid > .card { min-width: 0; }
+.ai-form-grid > *,
+.ai-radio-row > *,
+.con-grid > *,
+.kb-grid > *,
+.set-grid > *,
+.ai-tool-grid > *,
+.crm-grid > *,
+.apr-grid > * { min-width: 0; }
 
 .con-panel {
   background: var(--surface);
@@ -4849,7 +4862,7 @@ button {
 /* 快捷入口 */
 .con-quick {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 8px;
 }
 .con-quick-btn {
@@ -4888,7 +4901,7 @@ button {
 .con-base-sub { font-size: 12px; color: var(--muted); flex: 1; min-width: 0; }
 .con-base-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
   align-items: start;
 }
@@ -4951,25 +4964,13 @@ button {
 /* —— 客户画像 CRM 三栏 —— */
 .crm-grid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
 }
-@media (min-width: 820px) {
-  .crm-grid {
-    grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-    grid-template-areas: 'list detail' 'list rail';
-  }
-}
-@media (min-width: 1180px) {
-  .crm-grid {
-    grid-template-columns: minmax(0, 300px) minmax(0, 1fr) minmax(0, 300px);
-    grid-template-areas: 'list detail rail';
-  }
-}
-.crm-list { grid-area: list; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.crm-detail { grid-area: detail; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.crm-rail { grid-area: rail; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.crm-list,
+.crm-detail,
+.crm-rail { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 
 .crm-filterbar { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -5097,12 +5098,9 @@ button {
 /* —— 待确认中心 —— */
 .apr-grid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
-}
-@media (min-width: 900px) {
-  .apr-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 360px); }
 }
 
 /* 动作队列（局部深色工作队列面板） */
@@ -5270,8 +5268,8 @@ button {
 /* ===== 工具与工作流（PR6：吸收设计稿 tools 页 · 全部安全字段派生） ===== */
 .ai-tool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
 }
 .ai-tool-card {
   background: var(--trough);
@@ -5502,8 +5500,8 @@ button {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px 1fr 300px;
-  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
   padding: 10px 12px 12px;
 }
 .inbox-col { min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--warm-line); }
@@ -5584,7 +5582,7 @@ button {
 }
 
 @media (max-width: 900px) {
-  .inbox { grid-template-columns: 1fr; }
+  .inbox { grid-template-columns: minmax(0, 1fr); }
   .inbox-left { border-radius: var(--r-small); }
   .inbox-right { display: none; }
   .inbox-mid { display: none; }
@@ -5594,10 +5592,10 @@ button {
 }
 
 /* ---------- 知识库 ---------- */
-.kb-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; align-items: start; }
+.kb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
 .kb-hittest { display: flex; gap: 8px; margin-top: 10px; }
 .kb-hittest .input { flex: 1; }
-@media (max-width: 900px) { .kb-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .kb-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- 团队 ---------- */
 .team-list { display: flex; flex-direction: column; gap: 8px; }
@@ -5619,7 +5617,20 @@ button {
 @media (max-width: 720px) { .team-insts { display: none; } }
 
 /* ---------- 系统设置 ---------- */
-.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 720px) {
+  .ai-ws,
+  .ai-form-grid,
+  .ai-radio-row,
+  .con-grid,
+  .crm-grid,
+  .apr-grid,
+  .kb-grid,
+  .set-grid,
+  .ai-tool-grid,
+  .bg-grid,
+  .font-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .set-check {
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; color: var(--text); padding: 6px 0; cursor: default;
