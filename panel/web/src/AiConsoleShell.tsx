@@ -254,19 +254,19 @@ export default function AiConsoleShell() {
           <main className="main">
             <RouteErrorBoundary routeKey={loc.pathname}>
               <Routes>
-                <Route index element={<Console />} />
-                <Route path="inbox" element={<Inbox onOpenMenu={openMenu} />} />
-                <Route path="customers" element={<Customers onOpenMenu={openMenu} />} />
-                <Route path="ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
-                <Route path="knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
-                <Route path="tools" element={<Tools onOpenMenu={openMenu} />} />
-                <Route path="approvals" element={<Approvals onOpenMenu={openMenu} />} />
-                <Route path="monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
-                <Route path="team" element={<Team onOpenMenu={openMenu} />} />
-                <Route path="settings" element={<Settings onOpenMenu={openMenu} />} />
-                <Route path="admin" element={<Admin onOpenMenu={openMenu} onChangePassword={() => setShowPw(true)} />} />
-                <Route path="i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
-                <Route path="*" element={<Navigate to="." replace />} />
+                <Route path="/" element={<Console />} />
+                <Route path="/inbox" element={<Inbox onOpenMenu={openMenu} />} />
+                <Route path="/customers" element={<Customers onOpenMenu={openMenu} />} />
+                <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
+                <Route path="/knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
+                <Route path="/tools" element={<Tools onOpenMenu={openMenu} />} />
+                <Route path="/approvals" element={<Approvals onOpenMenu={openMenu} />} />
+                <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
+                <Route path="/team" element={<Team onOpenMenu={openMenu} />} />
+                <Route path="/settings" element={<Settings onOpenMenu={openMenu} />} />
+                <Route path="/admin" element={<Admin onOpenMenu={openMenu} onChangePassword={() => setShowPw(true)} />} />
+                <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </RouteErrorBoundary>
           </main>
