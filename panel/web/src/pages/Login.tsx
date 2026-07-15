@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { PasswordInput } from '../ui';
 
 export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
@@ -17,7 +18,8 @@ export default function Login() {
     setBusy(true);
     try {
       await login(username.trim(), password);
-      nav('/', { replace: true });
+      const target = (loc.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+      nav(target?.pathname ? `${target.pathname}${target.search || ''}` : '/', { replace: true });
     } catch (e: any) {
       setErr(e.message || '登录失败');
     } finally {
