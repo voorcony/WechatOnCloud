@@ -1051,6 +1051,150 @@ function filterApprovalQueue(raw: any, hashToId: Map<string, string>, includeUnk
   };
 }
 
+
+export interface ApprovalDetailResponse {
+  ok: true;
+  mode: 'real' | 'unavailable' | 'not_found';
+  type: 'reply' | 'send';
+  id: number;
+  instance_id_hash?: string;
+  instance_id_suffix?: string;
+  woc_instance_id?: string | null;
+  conversation_key_hash?: string;
+  incoming_text?: string | null;
+  reply_text?: string | null;
+  reason?: string | null;
+  status?: string | null;
+}
+
+function runApprovalDetailSql(
+  cfg: AiEmployeeConfig,
+  args: { type: 'reply' | 'send'; id: number; visibleHashes: string[]; admin: boolean },
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const script = String.raw`
+import hashlib, json, sqlite3, sys
+payload = json.loads(sys.argv[1])
+db = payload["db"]
+tenant = payload["tenant"]
+type_ = payload["type"]
+id_ = int(payload["id"])
+visible = set(payload.get("visible_hashes") or [])
+admin = bool(payload.get("admin"))
+
+def h(text):
+    return hashlib.sha256(" ".join(str(text or "").strip().split()).encode("utf-8")).hexdigest()[:16]
+
+conn = sqlite3.connect(db)
+conn.row_factory = sqlite3.Row
+try:
+    if type_ == "send":
+        row = conn.execute(
+            """
+            SELECT sa.id AS item_id, r.id AS reply_job_id, r.tenant_id, r.instance_id, r.conversation_key,
+                   r.incoming_message_id, r.reply_text, r.reason, sa.status
+            FROM send_actions sa
+            JOIN reply_jobs r ON r.id = sa.reply_job_id AND r.tenant_id = sa.tenant_id
+            WHERE sa.tenant_id = ? AND sa.id = ?
+            """,
+            (tenant, id_),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT r.id AS item_id, r.id AS reply_job_id, r.tenant_id, r.instance_id, r.conversation_key,
+                   r.incoming_message_id, r.reply_text, r.reason, r.status
+            FROM reply_jobs r
+            WHERE r.tenant_id = ? AND r.id = ?
+            """,
+            (tenant, id_),
+        ).fetchone()
+    if not row:
+        sys.stdout.write(json.dumps({"mode":"not_found"}))
+        raise SystemExit(0)
+    inst_hash = h(row["instance_id"])
+    if (not admin) and inst_hash not in visible:
+        sys.stdout.write(json.dumps({"mode":"not_found"}))
+        raise SystemExit(0)
+    incoming = None
+    if row["incoming_message_id"] is not None:
+        msg = conn.execute(
+            "SELECT text FROM messages WHERE tenant_id = ? AND id = ? AND instance_id = ?",
+            (tenant, row["incoming_message_id"], row["instance_id"]),
+        ).fetchone()
+        incoming = msg["text"] if msg else None
+    sys.stdout.write(json.dumps({
+        "mode":"real",
+        "type": type_,
+        "id": id_,
+        "instance_id_hash": inst_hash,
+        "instance_id_suffix": str(row["instance_id"])[-6:],
+        "conversation_key_hash": h(row["conversation_key"]),
+        "incoming_text": incoming,
+        "reply_text": row["reply_text"],
+        "reason": row["reason"],
+        "status": row["status"],
+    }, ensure_ascii=False))
+finally:
+    conn.close()
+`;
+    execFile(
+      cfg.python,
+      ['-c', script, JSON.stringify({ db: cfg.db, tenant: cfg.tenant, type: args.type, id: args.id, visible_hashes: args.visibleHashes, admin: args.admin })],
+      { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      (err, stdout) => {
+        if (err) return reject(new Error((err as any).killed ? 'detail_timeout' : 'detail_failed'));
+        try {
+          resolve(JSON.parse(stdout));
+        } catch {
+          reject(new Error('detail_bad_json'));
+        }
+      },
+    );
+  });
+}
+
+export async function buildApprovalDetailResponse(
+  user: Pick<User, 'role'>,
+  visibleInstanceIds: string[],
+  type: unknown,
+  id: unknown,
+  log?: (code: string) => void,
+): Promise<ApprovalDetailResponse> {
+  const cfg = aiEmployeeConfig();
+  const kind = type === 'send' ? 'send' : type === 'reply' ? 'reply' : null;
+  const itemId = Math.floor(Number(id));
+  if (!kind || !Number.isInteger(itemId) || itemId <= 0 || !isConfigured(cfg)) {
+    return { ok: true, mode: 'unavailable', type: kind || 'reply', id: Number.isFinite(itemId) ? itemId : 0 };
+  }
+  try {
+    const raw = await runApprovalDetailSql(cfg, {
+      type: kind,
+      id: itemId,
+      visibleHashes: visibleInstanceIds.map((x) => computeTextHash(x)),
+      admin: user.role === 'admin',
+    });
+    if (!raw || raw.mode === 'not_found') return { ok: true, mode: 'not_found', type: kind, id: itemId };
+    return {
+      ok: true,
+      mode: 'real',
+      type: kind,
+      id: itemId,
+      instance_id_hash: str(raw.instance_id_hash) ?? '',
+      instance_id_suffix: str(raw.instance_id_suffix) ?? '',
+      woc_instance_id: visibleInstanceIds.find((x) => computeTextHash(x) === raw.instance_id_hash) ?? null,
+      conversation_key_hash: str(raw.conversation_key_hash) ?? '',
+      incoming_text: str(raw.incoming_text),
+      reply_text: str(raw.reply_text),
+      reason: str(raw.reason),
+      status: str(raw.status),
+    };
+  } catch (e) {
+    log?.((e as Error).message || 'detail_error');
+    return { ok: true, mode: 'unavailable', type: kind, id: itemId };
+  }
+}
+
 // ---------- 主入口：给路由用 ----------
 // 传入当前用户 + 其可见实例 id 列表。永不抛错——任何异常都收敛为 demo_fallback。
 export async function buildConsoleResponse(

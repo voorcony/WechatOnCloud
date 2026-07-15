@@ -289,7 +289,10 @@ export function findById(id: string) {
 export function listUsers() {
   return data.users
     .slice()
-    .sort((a, b) => (a.role === b.role ? a.createdAt.localeCompare(b.createdAt) : a.role === 'admin' ? -1 : 1))
+    .sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    })
     .map(publicUser);
 }
 

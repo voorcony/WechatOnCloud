@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type AiApprovalQueuePayload } from '../api';
+import { api, type AiApprovalDetailResponse, type AiApprovalQueuePayload } from '../api';
 import { useAiConsoleModel, riskDotCls, RISK_LABEL, type ApprovalAction, type Risk } from './aiConsoleModel';
 
 // 待确认中心（/approvals）—— 对标模板「待确认队列」：KPI + 队列（左）+ 选中动作详情（右）。
 // 本页只读：批准 / 修改 / 拒绝为占位（真实写操作 API 后续接入）；接管实例复用已有控制权入口。
-// 数据脱敏：只展示动作类型 / 风险 / 关联员工 / 所属微信 / 脱敏摘要，绝不产出回复原文 / 聊天正文。
+// 数据安全：列表仍是脱敏卡片；审批人员点击“查看正文”时，通过受控详情接口读取原消息/拟回复用于判断。
 
 type FilterKey = 'all' | 'reply_jobs_needs_human' | 'employee_tasks_waiting_approval' | 'send_actions_planned' | 'contact_remark_actions_planned' | 'group_operation_actions_planned';
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -96,14 +96,21 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
   const actions = realActions ?? m.actions;
   const filtered = useMemo(() => (filter === 'all' ? actions : actions.filter((a) => a.type === filter)), [actions, filter]);
   const selected = filtered.find((a) => a.key === selKey) ?? filtered[0] ?? actions[0] ?? null;
-  const c = approvalQueue?.summary ?? m.pendingCounts;
+  const countByType = (f: FilterKey) => actions.filter((a) => a.type === f).length;
+  const pendingTotal = actions.length;
+  const c = {
+    reply_jobs_needs_human: countByType('reply_jobs_needs_human'),
+    send_actions_planned: countByType('send_actions_planned'),
+    contact_remark_actions_planned: countByType('contact_remark_actions_planned'),
+    group_operation_actions_planned: countByType('group_operation_actions_planned'),
+    employee_tasks_waiting_approval: countByType('employee_tasks_waiting_approval'),
+  };
   const empty = m.loaded && m.instances.length === 0;
   const ready = m.loaded && m.probed && approvalProbed;
-  const pendingTotal = c.pending_total ?? Object.values(c).reduce((sum, v) => sum + (typeof v === 'number' ? v : 0), 0);
-  const typeCount = (f: FilterKey) => (f === 'all' ? actions.length : actions.filter((a) => a.type === f).length);
+  const typeCount = (f: FilterKey) => (f === 'all' ? pendingTotal : countByType(f));
 
   return (
-    <div>
+    <div className="console-page">
       <div className="page-h">
         <div>
           <h1>待确认队列</h1>
@@ -124,7 +131,7 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
       )}
 
       <div className="safe-note">
-        当前仅展示<b>聚合待确认动作</b>的安全视图，队列正文均已脱敏。批准 / 修改 / 拒绝为占位按钮，<b>真实审批写操作 API 后续接入</b>；「接管实例」复用已有控制权入口。
+列表默认展示<b>脱敏安全视图</b>；选中动作后可点击<b>查看正文</b>，受控读取原消息 / 拟回复用于审批判断。批准 / 修改 / 拒绝为占位按钮，<b>真实审批写操作 API 后续接入</b>；「接管实例」复用已有控制权入口。
       </div>
 
       <div className="kpi-grid">
@@ -194,7 +201,32 @@ export default function Approvals(_props: { onOpenMenu?: () => void }) {
   );
 }
 
+function detailTarget(action: ApprovalAction): { type: 'reply' | 'send'; id: number } | null {
+  const [type, raw] = action.key.split(':');
+  const id = Math.floor(Number(raw));
+  if (!Number.isInteger(id) || id <= 0) return null;
+  if (type === 'reply') return { type: 'reply', id };
+  if (type === 'send') return { type: 'send', id };
+  return null;
+}
+
 function ActionDetail({ action, onTakeover }: { action: ApprovalAction; onTakeover: (id: string) => void }) {
+  const [detail, setDetail] = useState<AiApprovalDetailResponse | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const target = detailTarget(action);
+  useEffect(() => {
+    setDetail(null);
+    setLoadingDetail(false);
+  }, [action.key]);
+  const reveal = async () => {
+    if (!target) return;
+    setLoadingDetail(true);
+    try {
+      setDetail(await api.aiEmployeeApprovalDetail(target.type, target.id));
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
   return (
     <div className="apr-detail-card">
       <div className="row">
@@ -210,6 +242,44 @@ function ActionDetail({ action, onTakeover }: { action: ApprovalAction; onTakeov
       </div>
 
       <div className="apr-redacted">{action.redacted}</div>
+
+      <div className="safe-note" style={{ marginTop: 12 }}>
+        <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <b>审批正文</b>
+          <span className="chip outline">列表默认脱敏</span>
+          {target ? (
+            <button className="btn sm brand" disabled={loadingDetail} onClick={reveal}>
+              {loadingDetail ? '读取中…' : detail ? '刷新正文' : '查看正文'}
+            </button>
+          ) : (
+            <button className="btn sm" disabled title="该动作类型暂无正文详情接口">暂无正文接口</button>
+          )}
+        </div>
+        {detail?.mode === 'real' ? (
+          <div className="approval-body-grid">
+            <div className="approval-body-box">
+              <span>原消息</span>
+              <p>{detail.incoming_text || '未关联原消息或原消息为空'}</p>
+            </div>
+            <div className="approval-body-box">
+              <span>AI 拟回复</span>
+              <p>{detail.reply_text || '暂无拟回复正文'}</p>
+            </div>
+            {detail.reason && (
+              <div className="approval-body-box wide">
+                <span>模型理由</span>
+                <p>{detail.reason}</p>
+              </div>
+            )}
+          </div>
+        ) : detail?.mode === 'not_found' ? (
+          <div className="dim" style={{ marginTop: 8 }}>未找到该动作，或该动作不在你的实例授权范围内。</div>
+        ) : detail?.mode === 'unavailable' ? (
+          <div className="dim" style={{ marginTop: 8 }}>正文详情服务暂不可用；列表脱敏摘要仍可用于排查。</div>
+        ) : (
+          <div className="dim" style={{ marginTop: 8 }}>点击“查看正文”后，审批人员可看到原消息与 AI 拟回复；后台审计仍只记录 hash / id，不写入明文日志。</div>
+        )}
+      </div>
 
       <div className="kvgrid">
         <div className="kv"><span className="k">动作类型</span><span className="v">{action.typeLabel}</span></div>
@@ -237,7 +307,7 @@ function ActionDetail({ action, onTakeover }: { action: ApprovalAction; onTakeov
       </div>
 
       <div className="apr-audit">
-        审计提示：本页仅展示聚合待确认动作的脱敏视图。批准 / 修改 / 拒绝需接入真实人审 API 后才会执行；任何真实发送 / 改备注 / 群操作都会留痕并要求人工确认。
+        审计提示：列表默认脱敏；正文只在审批详情中受控读取，不写入 panel 日志。批准 / 修改 / 拒绝需接入真实人审 API 后才会执行；任何真实发送 / 改备注 / 群操作都会留痕并要求人工确认。
       </div>
     </div>
   );

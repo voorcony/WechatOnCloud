@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Component, createContext, useContext, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { useUI } from './ui';
@@ -18,10 +18,11 @@ import MonitorWall from './pages/MonitorWall';
 import Team from './pages/Team';
 import Settings from './pages/Settings';
 import InstanceView from './pages/Desktop';
+import Admin from './pages/Admin';
 
 // AiConsoleShell —— AI Console 产品页面的模板化外壳（完全对标设计稿）：
 //   左 248px 侧栏（品牌 + 微信实例列表 + 业务导航 + 用户区）+ 56px 顶栏 + 主区。
-//   视觉自成一套（.ai-console scope），不复用云微原版 .shell/.sidebar，与 /i/:id、/admin 分流。
+//   视觉自成一套（.ai-console scope），/admin 也在同一外壳内承载，避免后台变脸。
 //   数据安全不变：实例来自真实 useInstances，AI 指标来自 useAiConsoleModel（真实优先，缺失 demo）。
 
 // deterministic 伪随机：实例的"今日活跃"占位数字稳定不跳动（演示位，非敏感字段）。
@@ -66,7 +67,37 @@ const NAV: NavDef[] = [
   { path: '/team', label: '团队', icon: I.team },
   { path: '/settings', label: '系统设置', icon: I.setting },
 ];
-const TITLE: Record<string, string> = Object.fromEntries(NAV.map((n) => [n.path, n.label]));
+const TITLE: Record<string, string> = { ...Object.fromEntries(NAV.map((n) => [n.path, n.label])), '/admin': '实例·账号管理' };
+
+class RouteErrorBoundary extends Component<{ routeKey: string; children: ReactNode }, { failedKey: string | null; message: string }> {
+  state = { failedKey: null, message: '' };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { failedKey: window.location.pathname, message: error instanceof Error ? error.message : '页面渲染异常' };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error('[ai-console] route render failed', error, info.componentStack);
+  }
+
+  componentDidUpdate(prevProps: { routeKey: string }) {
+    if (prevProps.routeKey !== this.props.routeKey && this.state.failedKey) this.setState({ failedKey: null, message: '' });
+  }
+
+  render() {
+    if (this.state.failedKey) {
+      return (
+        <div className="route-error-card">
+          <div className="empty-blob">⚠️</div>
+          <div className="empty-title">当前模块加载失败，已拦截整页白屏</div>
+          <div className="empty-sub">{this.state.message || '页面渲染异常'}。请刷新或切换到其他模块，错误已写入浏览器控制台。</div>
+          <button className="btn brand" onClick={() => window.location.reload()}>刷新当前页</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Console 触发「修改密码」弹窗用的上下文（弹窗由 shell 承载）。
 const ShellCtx = createContext<{ openChangePassword: () => void }>({ openChangePassword: () => {} });
@@ -159,7 +190,7 @@ export default function AiConsoleShell() {
                     </button>
                   ))}
                   {isAdmin && (
-                    <button className={'nav-item' + (loc.pathname === '/admin' ? ' active' : '')} onClick={() => nav('/admin')} title="实例与账号管理（基础设施）">
+                    <button className={'nav-item' + (loc.pathname === '/admin' ? ' active' : '')} onClick={() => nav('/admin')} title="实例与账号管理">
                       <span className="ico">{I.setting}</span>
                       <span className="nav-label">实例·账号管理</span>
                     </button>
@@ -221,20 +252,23 @@ export default function AiConsoleShell() {
 
           {/* ---------- 主区 ---------- */}
           <main className="main">
-            <Routes>
-              <Route path="/" element={<Console />} />
-              <Route path="/inbox" element={<Inbox onOpenMenu={openMenu} />} />
-              <Route path="/customers" element={<Customers onOpenMenu={openMenu} />} />
-              <Route path="/ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
-              <Route path="/knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
-              <Route path="/tools" element={<Tools onOpenMenu={openMenu} />} />
-              <Route path="/approvals" element={<Approvals onOpenMenu={openMenu} />} />
-              <Route path="/monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
-              <Route path="/team" element={<Team onOpenMenu={openMenu} />} />
-              <Route path="/settings" element={<Settings onOpenMenu={openMenu} />} />
-              <Route path="/i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            <RouteErrorBoundary routeKey={loc.pathname}>
+              <Routes>
+                <Route index element={<Console />} />
+                <Route path="inbox" element={<Inbox onOpenMenu={openMenu} />} />
+                <Route path="customers" element={<Customers onOpenMenu={openMenu} />} />
+                <Route path="ai-employees" element={<AiEmployeeCenter onOpenMenu={openMenu} />} />
+                <Route path="knowledge" element={<Knowledge onOpenMenu={openMenu} />} />
+                <Route path="tools" element={<Tools onOpenMenu={openMenu} />} />
+                <Route path="approvals" element={<Approvals onOpenMenu={openMenu} />} />
+                <Route path="monitor" element={<MonitorWall onOpenMenu={openMenu} />} />
+                <Route path="team" element={<Team onOpenMenu={openMenu} />} />
+                <Route path="settings" element={<Settings onOpenMenu={openMenu} />} />
+                <Route path="admin" element={<Admin onOpenMenu={openMenu} onChangePassword={() => setShowPw(true)} />} />
+                <Route path="i/:id" element={<InstanceView onOpenMenu={openMenu} />} />
+                <Route path="*" element={<Navigate to="." replace />} />
+              </Routes>
+            </RouteErrorBoundary>
           </main>
 
           <div className="app-backdrop" onClick={() => setDrawer(false)} />

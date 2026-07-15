@@ -1,17 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
-import { useUI, PasswordInput } from './ui';
-import { api, appProfile, type InstanceWithStatus } from './api';
-import { InstanceIcon } from './AppIcon';
+import { PasswordInput } from './ui';
+import { api, type InstanceWithStatus } from './api';
 import { getThemeMode, applyThemeMode, nextThemeMode, resolveDark, type ThemeMode } from './theme';
-import Admin from './pages/Admin';
-import { AiEmployeeIcon } from './pages/AiEmployeeCenter';
-import { ConsoleIcon } from './pages/Console';
-import { InboxIcon } from './pages/Inbox';
-import { KnowledgeIcon } from './pages/Knowledge';
-import { ToolsIcon } from './pages/Tools';
-import { TeamIcon } from './pages/Team';
 import AiConsoleShell from './AiConsoleShell';
 
 const BUSY = ['downloading', 'extracting', 'installing'];
@@ -116,189 +108,12 @@ export default function AppShell() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => void state.reload(), [loc.pathname]);
 
-  // 分流：/admin（实例·账号管理）保留基础设施外壳；
-  //       AI Console 产品页与 /i/:id VNC 实例工作台统一走模板化 AiConsoleShell。
+  // 所有已登录页面统一走模板化 AiConsoleShell。/admin 只作为新壳内路由，
+  // 保留实例/账号管理能力，但不再切到旧 WOC 外壳，避免后台视觉变脸。
   return (
     <InstancesCtx.Provider value={state}>
-      <Routes>
-        <Route path="/admin" element={<InfraShell />} />
-        <Route path="/*" element={<AiConsoleShell />} />
-      </Routes>
+      <AiConsoleShell />
     </InstancesCtx.Provider>
-  );
-}
-
-// 基础设施外壳：仅承载 /admin 的实例/账号底层管理。
-function InfraShell() {
-  const { refresh } = useAuth();
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('woc_sb_collapsed') === '1');
-  const [drawer, setDrawer] = useState(false);
-  const [showPw, setShowPw] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 768px)').matches);
-  const loc = useLocation();
-
-  useEffect(() => {
-    const m = window.matchMedia('(min-width: 768px)');
-    const h = () => setIsDesktop(m.matches);
-    m.addEventListener('change', h);
-    return () => m.removeEventListener('change', h);
-  }, []);
-  useEffect(() => setDrawer(false), [loc.pathname]);
-
-  const railed = collapsed && isDesktop;
-  const toggleCollapsed = () =>
-    setCollapsed((c) => {
-      localStorage.setItem('woc_sb_collapsed', c ? '0' : '1');
-      return !c;
-    });
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        toggleCollapsed();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  const openMenu = () => setDrawer(true);
-  const openChangePassword = () => setShowPw(true);
-
-  return (
-    <>
-      <div className={'shell' + (railed ? ' collapsed' : '') + (drawer ? ' drawer-open' : '')}>
-        <Sidebar collapsed={railed} onToggleCollapsed={toggleCollapsed} />
-        <div className="shell-backdrop" onClick={() => setDrawer(false)} />
-        <main className="workspace">
-          <Admin onOpenMenu={openMenu} onChangePassword={openChangePassword} />
-        </main>
-      </div>
-      {showPw && <ChangePassword onClose={() => setShowPw(false)} onSaved={() => refresh()} />}
-    </>
-  );
-}
-
-// 产品导航（对齐设计稿 ROUTES 的 10 模块），分组呈现，像大厂 SaaS。
-// 「微信实例 / 管理」作为基础设施入口保留在下方，不替代产品导航。
-interface NavItem {
-  path: string;
-  label: string;
-  icon: JSX.Element;
-  title: string;
-}
-const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
-  {
-    title: '运营',
-    items: [
-      { path: '/', label: '总览', icon: ConsoleIcon, title: '总控台 / 总览' },
-      { path: '/inbox', label: '对话', icon: InboxIcon, title: '对话 Inbox（安全概览）' },
-      { path: '/customers', label: '客户', icon: Icon.customers, title: '客户画像 CRM' },
-      { path: '/approvals', label: '待确认', icon: Icon.pending, title: '待确认中心' },
-      { path: '/monitor', label: '监控', icon: Icon.monitor, title: '监控墙' },
-    ],
-  },
-  {
-    title: 'AI 能力',
-    items: [
-      { path: '/ai-employees', label: 'AI 员工', icon: AiEmployeeIcon, title: 'AI 员工中心' },
-      { path: '/knowledge', label: '知识库', icon: KnowledgeIcon, title: '知识库' },
-      { path: '/tools', label: '工具与工作流', icon: ToolsIcon, title: '工具与工作流' },
-    ],
-  },
-  {
-    title: '管理',
-    items: [
-      { path: '/team', label: '团队', icon: TeamIcon, title: '团队与权限' },
-      { path: '/settings', label: '系统设置', icon: Icon.gear, title: '系统设置' },
-    ],
-  },
-];
-
-function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: boolean; onToggleCollapsed: () => void }) {
-  const { user, logout } = useAuth();
-  const { confirm } = useUI();
-  const { instances } = useInstances();
-  const nav = useNavigate();
-  const loc = useLocation();
-  const isAdmin = user?.role === 'admin';
-  const go = (p: string) => nav(p);
-  const isOn = (p: string) => (p === '/' ? loc.pathname === '/' : loc.pathname === p || loc.pathname.startsWith(p + '/'));
-
-  return (
-    <aside className="sidebar">
-      <div className="sb-top">
-        <div className="sb-brand">
-          <img src="/favicon.svg" className="sb-logo" alt="" />
-          {!collapsed && <span className="sb-name">AI Console</span>}
-        </div>
-        <button className="sb-collapse" title="折叠侧栏 (⌘B)" onClick={onToggleCollapsed}>
-          {Icon.collapse}
-        </button>
-      </div>
-
-      <nav className="sb-nav">
-        {NAV_GROUPS.map((g) => (
-          <div key={g.title} className="sb-group">
-            {!collapsed && <div className="sb-group-title">{g.title}</div>}
-            {g.items.map((it) => (
-              <button key={it.path} className={'sb-item' + (isOn(it.path) ? ' on' : '')} onClick={() => go(it.path)} title={it.title}>
-                <span className="sb-ic">{it.icon}</span>
-                {!collapsed && <span className="sb-label">{it.label}</span>}
-              </button>
-            ))}
-          </div>
-        ))}
-      </nav>
-
-      {!collapsed && <div className="sb-section">微信实例</div>}
-      <div className="sb-list">
-        {instances.length === 0 && !collapsed && <div className="sb-empty">暂无可用实例</div>}
-        {instances.map((inst) => {
-          const on = loc.pathname === `/i/${inst.id}`;
-          const st = statusOf(inst);
-          return (
-            <button key={inst.id} className={'sb-item sb-inst' + (on ? ' on' : '')} onClick={() => go(`/i/${inst.id}`)} title={inst.name}>
-              <span className="sb-avatar">
-                <InstanceIcon icon={inst.icon} appType={inst.appType} size={34} radius={10} />
-                <span className={'sb-dot ' + st.cls} />
-              </span>
-              {!collapsed && <span className="sb-label">{inst.name}</span>}
-              {!collapsed && <span className="sb-stxt">{st.text}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="sb-footer">
-        {isAdmin && (
-          <button
-            className={'sb-item' + (loc.pathname === '/admin' ? ' on' : '')}
-            onClick={() => go('/admin')}
-            title="实例与账号管理（基础设施）"
-          >
-            <span className="sb-ic">{Icon.gear}</span>
-            {!collapsed && <span className="sb-label">实例·账号管理</span>}
-          </button>
-        )}
-        <button
-          className="sb-item"
-          title="退出"
-          onClick={async () => {
-            if (await confirm({ title: '退出登录？', confirmText: '退出' })) logout();
-          }}
-        >
-          <span className="sb-ic">{Icon.logout}</span>
-          {!collapsed && <span className="sb-label">退出</span>}
-        </button>
-        {!collapsed && (
-          <div className="sb-user">
-            {user?.username}
-            {isAdmin && ' · 管理员'}
-          </div>
-        )}
-      </div>
-    </aside>
   );
 }
 

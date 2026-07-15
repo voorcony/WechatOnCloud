@@ -102,6 +102,7 @@ import { createSession, getSession, destroySession, destroyUserSessions, SESSION
 import {
   buildConsoleResponse,
   buildApprovalQueueResponse,
+  buildApprovalDetailResponse,
   buildServiceHealthResponse,
   buildServiceRunsResponse,
   buildServiceActionPlan,
@@ -463,6 +464,14 @@ app.get('/api/ai-employees/approval-queue', async (req, reply) => {
   if (!u) return;
   const visibleIds = userInstances(u).map((i) => i.id);
   return buildApprovalQueueResponse(u, visibleIds, (code) => appendPanelLog('WARN', `[ai-employee] approval-queue ${code}`));
+});
+
+app.get('/api/ai-employees/approval-detail', async (req, reply) => {
+  const u = requireAuth(req, reply);
+  if (!u) return;
+  const visibleIds = userInstances(u).map((i) => i.id);
+  const q = (req.query as any) || {};
+  return buildApprovalDetailResponse(u, visibleIds, q.type, q.id, (code) => appendPanelLog('WARN', `[ai-employee] approval-detail ${code}`));
 });
 
 app.post('/api/ai-employees/bind', async (req, reply) => {

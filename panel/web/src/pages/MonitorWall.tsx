@@ -212,7 +212,7 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
   }, [instances, m.customers, m.actions, m.instanceEmployees]);
 
   return (
-    <div>
+    <div className="console-page wide">
       <div className="page-h">
         <div>
           <h1>监控 · 监控墙</h1>
@@ -329,6 +329,7 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
         {audit.length === 0 ? (
           <div className="card-b"><div className="dim">暂无实例可审计。</div></div>
         ) : (
+          <div className="t-scroll">
           <table className="t">
             <thead><tr><th>实例</th><th>状态</th><th>安全事件</th><th>级别</th><th></th></tr></thead>
             <tbody>
@@ -349,6 +350,7 @@ export default function MonitorWall({ onOpenMenu }: { onOpenMenu: () => void }) 
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

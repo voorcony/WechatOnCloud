@@ -17,9 +17,11 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+const routerBase = window.location.pathname.startsWith('/wechat/woc') ? '/wechat/woc' : undefined;
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,
