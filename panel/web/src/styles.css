@@ -5618,6 +5618,19 @@ button {
 
 /* ---------- 系统设置 ---------- */
 .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 720px) {
+  .ai-ws,
+  .ai-form-grid,
+  .ai-radio-row,
+  .con-grid,
+  .crm-grid,
+  .apr-grid,
+  .kb-grid,
+  .set-grid,
+  .ai-tool-grid,
+  .bg-grid,
+  .font-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .set-check {
   display: flex; align-items: center; gap: 8px;
   font-size: 12.5px; color: var(--text); padding: 6px 0; cursor: default;
