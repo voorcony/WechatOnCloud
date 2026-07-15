@@ -2,6 +2,14 @@
 
 ## [Unreleased] - 2026-07-15
 
+### Fixed
+- AI 员工详情页的人设草稿表单已把 `form-input` / `form-textarea` / `form-textarea-trial` / `form-textarea-danger` 真正接到业务域、目标、试运行判断、禁止承诺等输入控件，恢复可见边界样式。
+
+### Validation
+- `npm --prefix panel/web run build`
+
+## [Unreleased] - 2026-07-15
+
 ### Changed
 - 按 AI Console 设计规范重写总览页展示层：标题、KPI、图表区、待确认/知识库/事件流卡片统一使用 `.card`、`.kpi`、`.btn`、`.dot` 体系。
 - 支持同一前端在 `wechat.aipowerlogin.com/dashboard` 下运行，React Router 自动识别 `/dashboard` basename。

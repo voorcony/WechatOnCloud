@@ -1517,7 +1517,7 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
                 </label>
                 <label className="form-field">
                   <span>业务域</span>
-                  <input className="input" value={persona.serviceDomain} maxLength={60}
+                  <input className="form-input" value={persona.serviceDomain} maxLength={60}
                     onChange={(e) => setPersona((p) => ({ ...p, serviceDomain: e.target.value }))} placeholder="如：游戏代练客服" />
                 </label>
                 <div className="form-field">
@@ -1542,13 +1542,13 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
                 </div>
                 <label className="form-field">
                   <span>目标（引导收集的信息）</span>
-                  <textarea className="textarea" value={persona.goals} maxLength={2000}
+                  <textarea className="form-textarea" value={persona.goals} maxLength={2000}
                     onChange={(e) => setPersona((p) => ({ ...p, goals: e.target.value }))}
                     placeholder="如：收集游戏 / 区服 / 段位 / 目标段位 / 预算 / 时限，并沉淀客户画像" />
                 </label>
                 <label className="form-field">
                   <span>禁止承诺 / 红线</span>
-                  <textarea className="textarea" value={persona.forbidden} maxLength={2000}
+                  <textarea className="form-textarea form-textarea-danger" value={persona.forbidden} maxLength={2000}
                     onChange={(e) => setPersona((p) => ({ ...p, forbidden: e.target.value }))}
                     placeholder="如：不承诺 100% 不封号；不提供违规外挂；不诱导索取账号 / 支付密码 / 验证码" />
                 </label>
@@ -1654,7 +1654,7 @@ function PersonaPolicyEditor({ emp, demo }: { emp: EmployeeVM; demo: boolean }) 
 
                 <label className="form-field">
                   <span>试运行判断（输入一条示例咨询，看会自动发送还是转人工）</span>
-                  <textarea className="textarea" value={sample} maxLength={500}
+                  <textarea className="form-textarea form-textarea-trial" value={sample} maxLength={500}
                     onChange={(e) => setSample(e.target.value)}
                     placeholder="如：王者荣耀想从黄金上到钻石，大概多少钱多久？" />
                 </label>
