@@ -148,10 +148,10 @@ function buildCockpit(real: AiConsolePayload | null, fallback: ConsoleModel): Co
 function CockpitCard({ c, real, nav }: { c: CockpitSummary; real: boolean; nav: (to: string) => void }) {
   const tone = cockpitTone(c.readyScore);
   return (
-    <div className="card cockpit-card" style={{ marginTop: 16 }}>
+    <div className="card cockpit-card mt">
       <div className="card-h cockpit-head">
         <span className="title">AI 员工运营驾驶舱</span>
-        <span className={'chip ' + tone} style={{ marginLeft: 'auto' }}>{c.readyScore}/6 就绪</span>
+        <span className={'chip ml-auto ' + tone}>{c.readyScore}/6 就绪</span>
       </div>
       <div className="card-b cockpit-body">
         <div className="cockpit-status-grid">
@@ -207,17 +207,20 @@ function areaPath(points: number[], w: number, h: number, pad: number): { area: 
 
 export default function Console({ onChangePassword }: { onOpenMenu?: () => void; onChangePassword?: () => void }) {
   const { user } = useAuth();
-  const { instances, loaded } = useInstances();
+  const { instances, loaded, reload } = useInstances();
   const nav = useNavigate();
   const isAdmin = user?.role === 'admin';
 
   const [resp, setResp] = useState<AiEmployeeConsoleResponse | null>(null);
   const [probed, setProbed] = useState(false);
+  // tick 仅用于「刷新」按钮重新触发同一次只读快照拉取，不改变 api 调用逻辑。
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     let alive = true;
     api.aiEmployeeConsole().then((r) => alive && setResp(r)).catch(() => alive && setResp(null)).finally(() => alive && setProbed(true));
     return () => { alive = false; };
-  }, []);
+  }, [tick]);
+  const refresh = () => { void reload(); setTick((t) => t + 1); };
 
   const real = resp?.mode === 'real' && resp.console.found ? resp.console : null;
   const wocById = useMemo(() => new Map(instances.map((i) => [i.id, i])), [instances]);
@@ -237,10 +240,11 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
     <div className="console-page">
       <div className="page-h">
         <div>
-          <h1>总览</h1>
-          <p>所有微信实例、AI 员工、待办与成本的实时概览。</p>
+          <h1>AI 微信员工总览</h1>
+          <p>云端值守实例、客户记忆沉淀、知识库命中与待确认动作的实时概览。</p>
         </div>
         <div className="act">
+          <button className="btn" onClick={refresh}>刷新</button>
           <button className="btn" disabled title="报表导出即将上线">导出报表</button>
           {isAdmin && <button className="btn primary" onClick={() => nav('/admin')}>+ 新建实例</button>}
         </div>
@@ -272,7 +276,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
         <>
           <div className="kpi-grid">
             <div className="kpi">
-              <div className="label">微信实例</div>
+              <div className="label">在线实例 / 员工</div>
               <div className="value">{online}/{instances.length}</div>
               <div className={'delta' + (online ? '' : ' muted')}>已挂载 {model.activeEmployees} 个 AI 员工</div>
             </div>
@@ -282,7 +286,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
               <div className="delta">AI 已自动处理 {model.handled.toLocaleString()} 条</div>
             </div>
             <div className="kpi">
-              <div className="label">AI 自治回复率</div>
+              <div className="label">AI 自动处理率</div>
               <div className="value">{autoRate}%</div>
               <div className="delta">高意向客户 {model.highIntent} 位</div>
             </div>
@@ -293,13 +297,11 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
             </div>
           </div>
 
-          <CockpitCard c={cockpit} real={!!real} nav={nav} />
-
-          <div className="grid-2" style={{ marginTop: 16 }}>
+          <div className="grid-2">
             <div className="card">
               <div className="card-h">
                 <span className="title">最近 7 天消息吞吐</span>
-                <div className="row" style={{ marginLeft: 'auto', gap: 4 }}>
+                <div className="legend">
                   <span className="chip brand">AI 自动回复</span>
                   <span className="chip outline">人工回复</span>
                 </div>
@@ -326,12 +328,12 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
               <div className="card-h"><span className="title">实例健康矩阵</span></div>
               <div className="card-b tight">
                 {instances.length === 0 ? (
-                  <div className="dim" style={{ padding: 8 }}>暂无实例</div>
+                  <div className="list-empty">暂无实例</div>
                 ) : instances.map((inst) => {
                   const st = statusOf(inst);
                   const pct = st.cls === 'st-on' ? 62 + (seedOf(inst.id) % 36) : st.cls === 'st-warn' ? 40 : 6;
                   return (
-                    <button key={inst.id} className="bar-row" style={{ width: '100%', background: 'transparent', border: 0, cursor: 'pointer' }} onClick={() => nav(`/i/${inst.id}`)}>
+                    <button key={inst.id} className="bar-row" onClick={() => nav(`/i/${inst.id}`)}>
                       <span className="lbl cut">{inst.name}</span>
                       <div className="bar"><div className={'fill' + (st.cls === 'st-off' ? ' off' : '')} style={{ width: pct + '%' }} /></div>
                       <span className="val"><span className={'dot ' + st.cls} /> {st.text}</span>
@@ -345,23 +347,28 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
           <div className="grid-3">
             <CardList title="待确认动作" action={{ text: '前往处理 ›', onClick: () => nav('/approvals') }}>
               {model.pendingTotal === 0 ? (
-                <div className="dim" style={{ padding: 8 }}>当前没有等待确认的动作 🎉</div>
+                <div className="list-empty">当前没有等待确认的动作 🎉</div>
               ) : model.pending.filter((p) => p.value > 0).map((p) => (
                 <div key={p.key} className="bar-row">
-                  <span className="risk-dot" style={{ width: 6, height: 6, borderRadius: 50, background: 'var(--warn)' }} />
-                  <div className="grow"><div style={{ fontSize: 13 }}>{p.label}</div></div>
+                  <span className="dot st-warn" />
+                  <div className="grow"><div className="txt">{p.label}</div></div>
                   <span className="chip warn">{p.value}</span>
                 </div>
               ))}
             </CardList>
 
-            <CardList title="今日任务" action={{ text: 'AI 员工中心 ›', onClick: () => nav('/ai-employees') }}>
+            <CardList title="知识库 · 今日任务" action={{ text: 'AI 员工中心 ›', onClick: () => nav('/ai-employees') }}>
+              <div className="bar-row">
+                <span className={'dot ' + (cockpit.kbReady ? 'st-busy' : 'st-warn')} />
+                <div className="grow"><div className="txt">知识库命中源（文档 / 分块）</div></div>
+                <span className={'chip ' + (cockpit.kbReady ? 'accent' : 'warn')}>{cockpit.kbDocs}/{cockpit.kbChunks}</span>
+              </div>
               {model.taskBuckets.length === 0 ? (
-                <div className="dim" style={{ padding: 8 }}>今日暂无任务记录。</div>
+                <div className="list-empty">今日暂无任务记录。</div>
               ) : model.taskBuckets.map((t) => (
                 <div key={t.key} className="bar-row">
                   <span className={'dot ' + t.cls} />
-                  <div className="grow"><div style={{ fontSize: 13 }}>{t.label}</div></div>
+                  <div className="grow"><div className="txt">{t.label}</div></div>
                   <span className="chip">{t.value}</span>
                 </div>
               ))}
@@ -369,7 +376,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
 
             <CardList title="事件流">
               {model.timeline.length === 0 ? (
-                <div className="dim" style={{ padding: 8 }}>暂无运行记录。</div>
+                <div className="list-empty">暂无运行记录。</div>
               ) : (
                 <div className="timeline">
                   {model.timeline.slice(0, 6).map((it) => (
@@ -389,10 +396,12 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
             </CardList>
           </div>
 
-          <div className="card" style={{ marginTop: 16 }}>
+          <CockpitCard c={cockpit} real={!!real} nav={nav} />
+
+          <div className="card mt">
             <div className="card-h">
               <span className="title">AI 员工在岗</span>
-              <button className="btn sm ghost" style={{ marginLeft: 'auto' }} onClick={() => nav('/ai-employees')}>进入 AI 员工中心 ›</button>
+              <button className="btn sm ghost ml-auto" onClick={() => nav('/ai-employees')}>进入 AI 员工中心 ›</button>
             </div>
             <div className="card-b">
               {model.employees.length === 0 ? (
@@ -407,7 +416,7 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
                           <div className="name">{e.name}</div>
                           <div className="role">{e.role || 'AI 员工'}</div>
                         </div>
-                        <span className={'chip ' + (e.statusCls === 'st-on' ? 'brand' : 'warn')} style={{ marginLeft: 'auto' }}>
+                        <span className={'chip ml-auto ' + (e.statusCls === 'st-on' ? 'brand' : 'warn')}>
                           <span className={'dot ' + e.statusCls} /> {e.statusText}
                         </span>
                       </div>
@@ -423,10 +432,10 @@ export default function Console({ onChangePassword }: { onOpenMenu?: () => void;
           </div>
 
           {model.customers.length > 0 && (
-            <div className="card" style={{ marginTop: 16, overflow: 'hidden' }}>
+            <div className="card mt clip">
               <div className="card-h">
                 <span className="title">高意向客户</span>
-                <button className="btn sm ghost" style={{ marginLeft: 'auto' }} onClick={() => nav('/customers')}>查看全部 ›</button>
+                <button className="btn sm ghost ml-auto" onClick={() => nav('/customers')}>查看全部 ›</button>
               </div>
               <div className="t-scroll">
                 <table className="t">
@@ -458,7 +467,7 @@ function CardList({ title, action, children }: { title: string; action?: { text:
     <div className="card">
       <div className="card-h">
         <span className="title">{title}</span>
-        {action && <button className="btn sm ghost" style={{ marginLeft: 'auto' }} onClick={action.onClick}>{action.text}</button>}
+        {action && <button className="btn sm ghost ml-auto" onClick={action.onClick}>{action.text}</button>}
       </div>
       <div className="card-b tight">{children}</div>
     </div>

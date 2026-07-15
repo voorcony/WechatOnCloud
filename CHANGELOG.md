@@ -2,6 +2,12 @@
 
 ## [Unreleased] - 2026-07-15
 
+### Changed
+- 按 AI Console 设计规范重写总览页展示层：标题、KPI、图表区、待确认/知识库/事件流卡片统一使用 `.card`、`.kpi`、`.btn`、`.dot` 体系。
+- 支持同一前端在 `wechat.aipowerlogin.com/dashboard` 下运行，React Router 自动识别 `/dashboard` basename。
+- 补齐 dashboard 响应式规则：`<1100px` KPI 固定 2 列，底部三卡先降为 2 列，超窄屏再单列。
+- 兼容用户设计 token 中 `.dot.on|busy|warn|off|err` 别名，组件仍优先使用 `st-*` 状态点。
+
 ### Fixed
 - 统一 WOC AI Console 外壳与 `/admin` 实例账号管理内页，避免进入实例账号管理时切到另一套 UI。
 - 修复 `/wechat/woc` 子路径路由、`/admin` 嵌套路由命中与模块级错误边界，降低页面白屏风险。
