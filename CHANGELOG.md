@@ -9,6 +9,8 @@
 - 兼容用户设计 token 中 `.dot.on|busy|warn|off|err` 别名，组件仍优先使用 `st-*` 状态点。
 
 ### Fixed
+- 修复 AI 员工详情、工具与工作流、系统设置等页面在 1024px 宽度下 card 子 grid 把文本压成一字一行的问题：所有 `1fr` 轨道显式包 `minmax(0, ...)`，并将右侧两列布局提前到 `<1280px` 单列。
+- 为 AI Console 关键卡片增加 `min-width`、`word-break` 与 `writing-mode: horizontal-tb` 兜底，避免窄屏竖排/挤压。
 - 统一 WOC AI Console 外壳与 `/admin` 实例账号管理内页，避免进入实例账号管理时切到另一套 UI。
 - 修复 `/wechat/woc` 子路径路由、`/admin` 嵌套路由命中与模块级错误边界，降低页面白屏风险。
 - 统一总览、AI 员工、待确认、对话、监控等核心页的 card/grid/button/text overflow 视觉密度。
