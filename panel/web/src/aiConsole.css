@@ -228,7 +228,7 @@
 .ai-console .agent-detail .card,
 .ai-console .prompt-pane,
 .ai-console .tool-card,
-.ai-console .set-grid .card { min-width: 320px; }
+.ai-console .set-grid .card { min-width: 0; }
 .ai-console .card .card-h {
   padding: 14px 16px; border-bottom: 1px solid var(--line);
   display: flex; align-items: center; gap: 8px;
@@ -746,11 +746,11 @@
 .ai-console .agent-detail .side .item { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; color: var(--text-2); gap: 10px; }
 .ai-console .agent-detail .side .item .v { color: var(--text); text-align: right; word-break: break-word; }
 
-.ai-console .prompt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.ai-console .prompt-pane { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 300px; min-width: 280px; }
+.ai-console .prompt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ai-console .prompt-pane { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 300px; min-width: 0; }
 .ai-console .prompt-pane .ph { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
 .ai-console .prompt-pane .ph .title { font-weight: 600; font-size: 13px; }
-.ai-console .prompt-pane .ph .seg { margin-left: auto; display: flex; gap: 2px; padding: 2px; background: var(--bg-soft); border-radius: 8px; }
+.ai-console .prompt-pane .ph .seg { display: flex; gap: 2px; padding: 2px; background: var(--bg-soft); border-radius: 8px; }
 .ai-console .prompt-pane .ph .seg button { padding: 3px 8px; font-size: 12px; background: transparent; border: 0; border-radius: 6px; color: var(--text-2); cursor: pointer; }
 .ai-console .prompt-pane .ph .seg button.active { background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow-1); }
 .ai-console .prompt-pane .body { padding: 12px; flex: 1; }
@@ -855,15 +855,21 @@
 
 /* 监控墙（实例网格） */
 .ai-console .monitor-wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
-.ai-console .monitor-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-1); transition: .15s; }
+.ai-console .monitor-card {
+  background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow-1); transition: .15s; min-width: 0;
+}
+.ai-console .monitor-info { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.ai-console .monitor-info > * { min-width: 0; }
 .ai-console .monitor-card.attn { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn-soft), var(--shadow-2); }
 .ai-console .monitor-head { padding: 12px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
 .ai-console .monitor-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .ai-console .monitor-rows { display: flex; flex-direction: column; gap: 6px; }
-.ai-console .monitor-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ai-console .monitor-row { display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
 .ai-console .monitor-row .lbl { color: var(--text-3); width: 64px; flex-shrink: 0; }
-.ai-console .monitor-row .v { flex: 1; min-width: 0; }
-.ai-console .risk-bar { display: flex; height: 6px; border-radius: 999px; overflow: hidden; flex: 1; background: var(--bg-soft); }
+.ai-console .monitor-row .v { flex: 1 1 0; min-width: 0; }
+.ai-console .monitor-row .chip { max-width: 100%; }
+.ai-console .risk-bar { display: flex; min-width: 0; max-width: 100%; height: 6px; border-radius: 999px; overflow: hidden; flex: 1 1 0; background: var(--bg-soft); }
 .ai-console .risk-bar .seg { height: 100%; }
 .ai-console .risk-bar .seg.danger { background: var(--danger); }
 .ai-console .risk-bar .seg.warn { background: var(--warn); }
@@ -885,8 +891,10 @@
 .ai-console .kvgrid .kv .v { font-size: 13px; color: var(--text); word-break: break-word; }
 
 /* 设置：表单块 */
-.ai-console .form-field { display: flex; flex-direction: column; gap: 4px; }
-.ai-console .form-field > span { font-size: 12px; color: var(--text-2); }
+.ai-console .form-row,
+.ai-console .form-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ai-console .form-label,
+.ai-console .form-field > span { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .ai-console .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 
 /* ====== 响应式 ====== */
